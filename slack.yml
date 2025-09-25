@@ -1,0 +1,26 @@
+---
+- name: Install Slack on AlmaLinux and Ubuntu
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Ensure Slack repository is added on RedHat-based systems
+      ansible.builtin.yum_repository:
+        name: slack
+        description: Slack Official Repository
+        baseurl: https://downloads.slack-edge.com/linux_releases/yum/x86_64/
+        gpgcheck: yes
+        gpgkey: https://downloads.slack-edge.com/linux_releases/slack.key
+      when: ansible_os_family == "RedHat"
+      
+    - name: Install Slack on RedHat-based systems
+      ansible.builtin.dnf:
+        name: slack-4.29.149
+        state: present
+      when: ansible_os_family == "RedHat"
+      
+    - name: Download and install Slack on Debian-based systems
+      ansible.builtin.apt:
+        deb: https://downloads.slack-edge.com/releases/linux/4.29.149/prod/x64/slack-desktop-4.29.149-amd64.deb
+        state: present
+      when: ansible_os_family == "Debian"
