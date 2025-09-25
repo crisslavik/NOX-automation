@@ -5,7 +5,7 @@
 
 # --- IMPORTANT ---
 # 1. This script now uses your Ansible inventory file to get the list of hosts.
-#    It looks for lines containing 'ansible_host='.
+#    It will now use hostnames directly, assuming they are resolvable via DNS.
 #    
 # 2. Create a file named 'password.txt' in the same directory.
 #    Write your root password on the first line.
@@ -34,14 +34,16 @@ if [ ! -f "$ANSIBLE_INVENTORY_FILE" ]; then
 fi
 
 echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
-HOSTS_FOUND=$(grep "ansible_host=" "$ANSIBLE_INVENTORY_FILE" | awk -F'=' '{print $2}')
+# A more flexible way to find hosts, handling commented lines and group names.
+# This finds lines that are not empty and do not start with a hash or bracket.
+HOSTS_FOUND=$(grep -vE '^\s*#|^\s*\[|^\s*$' "$ANSIBLE_INVENTORY_FILE")
 
 if [ -z "$HOSTS_FOUND" ]; then
-    echo "Warning: No hosts with 'ansible_host=' were found in the inventory file. Please check the file format."
+    echo "Warning: No hosts were found in the inventory file. Please check the file format."
     exit 0
 fi
 
-# Loop through each host in the Ansible inventory file.
+# Loop through each host found in the Ansible inventory file.
 for HOST in $HOSTS_FOUND; do
     echo "--- Attempting to copy key to $HOST ---"
     
