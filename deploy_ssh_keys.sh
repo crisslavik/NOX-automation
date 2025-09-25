@@ -12,6 +12,11 @@
 #    
 #    chmod 600 password.txt  # <-- SECURE THIS FILE!
 
+# ANSI color codes for messages
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
 # User and password variables
 USER="root"
 PASSWORD_FILE="password.txt"
@@ -28,10 +33,17 @@ if [ ! -f "$ANSIBLE_INVENTORY_FILE" ]; then
     exit 1
 fi
 
+echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
+HOSTS_FOUND=$(grep "ansible_host=" "$ANSIBLE_INVENTORY_FILE" | awk -F'=' '{print $2}')
+
+if [ -z "$HOSTS_FOUND" ]; then
+    echo "Warning: No hosts with 'ansible_host=' were found in the inventory file. Please check the file format."
+    exit 0
+fi
+
 # Loop through each host in the Ansible inventory file.
-# We use grep and awk to extract only the IP addresses from the 'ansible_host=' lines.
-for HOST in $(grep "ansible_host=" "$ANSIBLE_INVENTORY_FILE" | awk -F'=' '{print $2}'); do
-    echo "--- Copying key to $HOST ---"
+for HOST in $HOSTS_FOUND; do
+    echo "--- Attempting to copy key to $HOST ---"
     
     # Use sshpass to provide the password non-interactively
     sshpass -f "$PASSWORD_FILE" ssh-copy-id \
@@ -39,10 +51,11 @@ for HOST in $(grep "ansible_host=" "$ANSIBLE_INVENTORY_FILE" | awk -F'=' '{print
         -o UserKnownHostsFile=/dev/null \
         "$USER@$HOST"
         
+    # Check the exit status of the previous command
     if [ $? -eq 0 ]; then
-        echo "Successfully added key to $HOST."
+        echo -e "${GREEN}SUCCESS: Key successfully added or already present on $HOST.${NC}"
     else
-        echo "Failed to add key to $HOST. Check password or connectivity."
+        echo -e "${RED}FAILURE: Failed to add key to $HOST. Check password, permissions, or connectivity.${NC}"
     fi
     echo
 done
