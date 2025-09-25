@@ -1,0 +1,25 @@
+---
+- name: Update all machines
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Perform a full system update on RedHat-based systems (like AlmaLinux)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+      register: dnf_result
+
+    - name: Perform a full system update on Debian-based systems (like Ubuntu)
+      ansible.builtin.apt:
+        name: "*"
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      register: apt_result
+
+    - name: Reboot if necessary
+      ansible.builtin.reboot:
+      when: dnf_result.reboot_required is defined and dnf_result.reboot_required or apt_result.reboot_required is defined and apt_result.reboot_required
