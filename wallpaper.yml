@@ -1,0 +1,38 @@
+---
+- name: Set desktop wallpaper on GNOME
+  hosts: all
+  become: yes
+
+  vars:
+    wallpaper_source: "/path/to/your/wallpaper.jpg"  # Change this to the local path of your wallpaper image
+    wallpaper_dest_path: "/home/{{ item }}/Pictures/wallpaper.jpg"
+
+  tasks:
+    - name: Get list of users with home directories
+      ansible.builtin.shell: |
+        ls -1 /home
+      register: home_dirs
+      changed_when: false
+
+    - name: Ensure Pictures directory exists for each user
+      ansible.builtin.file:
+        path: "/home/{{ item }}/Pictures"
+        state: directory
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: '0755'
+      loop: "{{ home_dirs.stdout_lines }}"
+
+    - name: Copy wallpaper image to each user's home directory
+      ansible.builtin.copy:
+        src: "{{ wallpaper_source }}"
+        dest: "{{ wallpaper_dest_path }}"
+        owner: "{{ item }}"
+        group: "{{ item }}"
+      loop: "{{ home_dirs.stdout_lines }}"
+
+    - name: Set desktop wallpaper for each user
+      ansible.builtin.shell: |
+        dconf write /org/gnome/desktop/background/picture-uri "'file://{{ wallpaper_dest_path }}'"
+      become_user: "{{ item }}"
+      loop: "{{ home_dirs.stdout_lines }}"
