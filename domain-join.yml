@@ -1,0 +1,217 @@
+---
+- name: Join AlmaLinux 9 to AD Domain (ad.noxvfx.com)
+  hosts: all
+  become: yes
+  vars:
+    domain_name: "ad.noxvfx.com"
+    domain_controller: "dc-1.ad.noxvfx.com"
+    domain_admin_user: "noxadmin@AD.NOXVFX.COM"
+    domain_realm: "AD.NOXVFX.COM"
+    # You'll be prompted for this password during playbook run
+    # Or set it in a vault file for security
+    domain_admin_password: "{{ vault_domain_password | default('') }}"
+    
+    # NFS mounts configuration
+    nfs_server: "192.168.11.9"
+    nfs_mounts:
+      - { src: "/volume1/Projects", dest: "/mnt/Projects" }
+      - { src: "/volume1/Library", dest: "/mnt/Library" }
+      - { src: "/volume1/Archive", dest: "/mnt/Archive" }
+      - { src: "/volume2/Expansion1", dest: "/mnt/Expansion" }
+
+  tasks:
+    - name: Update all packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+      register: system_update
+
+    - name: Reboot if kernel was updated
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+      when: system_update.changed and 'kernel' in system_update.results | string
+
+    - name: Install required packages for domain joining
+      ansible.builtin.dnf:
+        name:
+          - realmd
+          - sssd
+          - oddjob
+          - oddjob-mkhomedir
+          - adcli
+          - samba-common-tools
+          - krb5-workstation
+          - nfs-utils
+        state: present
+
+    - name: Start and enable required services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - realmd
+        - sssd
+        - oddjobd
+
+    - name: Check if system is already joined to domain
+      ansible.builtin.command: realm list
+      register: realm_status
+      changed_when: false
+      failed_when: false
+
+    - name: Discover the domain
+      ansible.builtin.command: "realm discover {{ domain_name }}"
+      register: realm_discover
+      when: domain_name not in realm_status.stdout
+
+    - name: Display domain discovery results
+      ansible.builtin.debug:
+        var: realm_discover.stdout_lines
+      when: realm_discover is defined
+
+    - name: Prompt for domain admin password if not provided
+      ansible.builtin.pause:
+        prompt: "Enter password for {{ domain_admin_user }}"
+        echo: no
+      register: password_prompt
+      when: 
+        - domain_admin_password == ""
+        - domain_name not in realm_status.stdout
+
+    - name: Set domain password from prompt
+      ansible.builtin.set_fact:
+        domain_admin_password: "{{ password_prompt.user_input }}"
+      when: password_prompt is defined and password_prompt.user_input is defined
+
+    - name: Join the domain
+      ansible.builtin.expect:
+        command: "realm join -U {{ domain_admin_user }} {{ domain_controller }} -v"
+        responses:
+          Password for *: "{{ domain_admin_password }}"
+        timeout: 60
+      register: domain_join_result
+      when: domain_name not in realm_status.stdout
+
+    - name: Display domain join results
+      ansible.builtin.debug:
+        var: domain_join_result
+      when: domain_join_result is defined
+
+    - name: Configure SSSD
+      ansible.builtin.copy:
+        content: |
+          [sssd]
+          domains = {{ domain_name }}
+          config_file_version = 2
+          services = nss, pam
+
+          [domain/{{ domain_name }}]
+          default_shell = /bin/bash
+          ad_server = {{ domain_controller }}
+          krb5_store_password_if_offline = True
+          cache_credentials = True
+          krb5_realm = {{ domain_realm }}
+          realmd_tags = manages-system joined-with-adcli
+          id_provider = ad
+          fallback_homedir = /home/%d/%u
+          ad_domain = {{ domain_name }}
+          use_fully_qualified_names = False
+          ldap_id_mapping = True
+          access_provider = ad
+        dest: /etc/sssd/sssd.conf
+        mode: '0600'
+        owner: root
+        group: root
+        backup: yes
+      notify: restart sssd
+
+    - name: Add domain groups to sudoers
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        line: "{{ item }}"
+        state: present
+        validate: 'visudo -cf %s'
+        backup: yes
+      loop:
+        - "%Domain\\ Admins ALL=(ALL:ALL) ALL"
+        - "%NOX\\ Admins ALL=(ALL:ALL) ALL"
+
+    - name: Configure idmapd.conf for NFS
+      ansible.builtin.lineinfile:
+        path: /etc/idmapd.conf
+        regexp: '^#?Domain\s*='
+        line: "Domain = {{ domain_name }}"
+        backup: yes
+
+    - name: Create NFS mount points
+      ansible.builtin.file:
+        path: "{{ item.dest }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ nfs_mounts }}"
+
+    - name: Add NFS mounts to fstab
+      ansible.builtin.mount:
+        path: "{{ item.dest }}"
+        src: "{{ nfs_server }}:{{ item.src }}"
+        fstype: nfs
+        opts: defaults
+        state: present
+        backup: yes
+      loop: "{{ nfs_mounts }}"
+
+    - name: Test NFS connectivity before mounting
+      ansible.builtin.command: "showmount -e {{ nfs_server }}"
+      register: nfs_exports
+      failed_when: false
+      changed_when: false
+
+    - name: Display NFS exports
+      ansible.builtin.debug:
+        msg: "Available NFS exports: {{ nfs_exports.stdout_lines }}"
+      when: nfs_exports.rc == 0
+
+    - name: Mount NFS shares
+      ansible.builtin.mount:
+        path: "{{ item.dest }}"
+        src: "{{ nfs_server }}:{{ item.src }}"
+        fstype: nfs
+        state: mounted
+      loop: "{{ nfs_mounts }}"
+      register: nfs_mount_result
+      failed_when: false
+
+    - name: Display NFS mount results
+      ansible.builtin.debug:
+        msg: "Mount {{ item.item.dest }}: {{ 'SUCCESS' if item.rc == 0 else 'FAILED - ' + item.msg | default('Unknown error') }}"
+      loop: "{{ nfs_mount_result.results }}"
+      when: nfs_mount_result is defined
+
+    - name: Verify domain join status
+      ansible.builtin.command: realm list
+      register: final_realm_status
+      changed_when: false
+
+    - name: Display final domain status
+      ansible.builtin.debug:
+        msg: "Domain join status: {{ 'SUCCESS' if domain_name in final_realm_status.stdout else 'FAILED' }}"
+
+    - name: Test domain user authentication (optional)
+      ansible.builtin.command: "id {{ domain_admin_user.split('@')[0] }}"
+      register: user_test
+      failed_when: false
+      changed_when: false
+
+    - name: Reboot system to complete domain join
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting to complete domain join process"
+      when: domain_join_result is defined and domain_join_result.changed
+
+  handlers:
+    - name: restart sssd
+      ansible.builtin.systemd:
+        name: sssd
+        state: restarted
+        daemon_reload: yes
