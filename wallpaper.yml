@@ -1,15 +1,20 @@
 ---
-- name: Deploy wallpaper (simple approach)
+- name: Simple wallpaper deployment (root connection)
   hosts: all
-  become: yes
   vars:
     wallpaper_source: "NOX_Wallpaper.jpg"
   
   tasks:
-    - name: Get regular users
+    - name: Find regular users
       ansible.builtin.shell: "awk -F: '$3 >= 1000 && $3 < 60000 {print $1}' /etc/passwd"
       register: users
       changed_when: false
+
+    - name: Copy wallpaper to /usr/share/backgrounds (system-wide)
+      ansible.builtin.copy:
+        src: "{{ wallpaper_source }}"
+        dest: "/usr/share/backgrounds/wallpaper.jpg"
+        mode: '0644'
 
     - name: Copy wallpaper to each user's home
       ansible.builtin.copy:
@@ -19,16 +24,28 @@
         group: "{{ item }}"
         mode: '0644'
       loop: "{{ users.stdout_lines }}"
+      ignore_errors: yes  # In case home directory doesn't exist
 
-    - name: Add wallpaper command to user's .bashrc
-      ansible.builtin.lineinfile:
-        path: "/home/{{ item }}/.bashrc"
-        line: |
-          # Set wallpaper if in GNOME session
-          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
-              gsettings set org.gnome.desktop.background picture-uri "file:///home/{{ item }}/wallpaper.jpg" 2>/dev/null || true
+    - name: Create simple wallpaper script for each user
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ]; then
+              gsettings set org.gnome.desktop.background picture-uri "file:///home/{{ item }}/wallpaper.jpg"
           fi
+        dest: "/home/{{ item }}/set-wallpaper.sh"
         owner: "{{ item }}"
         group: "{{ item }}"
-        create: yes
+        mode: '0755'
       loop: "{{ users.stdout_lines }}"
+      ignore_errors: yes
+
+    - name: Add to user .profile
+      ansible.builtin.lineinfile:
+        path: "/home/{{ item }}/.profile"
+        line: "[ -f ~/set-wallpaper.sh ] && ~/set-wallpaper.sh"
+        create: yes
+        owner: "{{ item }}"
+        group: "{{ item }}"
+      loop: "{{ users.stdout_lines }}"
+      ignore_errors: yes
