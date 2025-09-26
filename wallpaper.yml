@@ -1,28 +1,41 @@
 ---
-- name: Deploy NOX wallpaper for AD users
+- name: Complete NOX wallpaper deployment (Users + GDM)
   hosts: all
   become: yes
   vars:
-    wallpaper_source: "NOX_Wallpaper.jpg"  # File in your playbook's files/ directory
-    wallpaper_system_path: "/usr/share/backgrounds/nox-wallpaper.jpg"
-    domain_name: "ad.noxvfx.com"
+    wallpaper_source: "NOX_Wallpaper.jpg"
+    logo_source: "NOX_Logo.png"  # Optional - comment out if you don't have a logo
+    wallpaper_path: "/usr/share/backgrounds/nox-wallpaper.jpg"
+    logo_path: "/usr/share/pixmaps/nox-logo.png"
 
   tasks:
-    - name: Copy NOX wallpaper to system backgrounds directory
+    # ====== WALLPAPER FILES SETUP ======
+    - name: Copy NOX wallpaper to system location
       ansible.builtin.copy:
         src: "{{ wallpaper_source }}"
-        dest: "{{ wallpaper_system_path }}"
+        dest: "{{ wallpaper_path }}"
         mode: '0644'
         owner: root
         group: root
 
+    - name: Copy NOX logo (optional)
+      ansible.builtin.copy:
+        src: "{{ logo_source }}"
+        dest: "{{ logo_path }}"
+        mode: '0644'
+        owner: root
+        group: root
+      when: logo_source is defined
+      ignore_errors: yes
+
+    # ====== USER WALLPAPER CONFIGURATION ======
     - name: Create dconf system database directory
       ansible.builtin.file:
         path: /etc/dconf/db/local.d
         state: directory
         mode: '0755'
 
-    - name: Create dconf profile for users
+    - name: Create dconf user profile
       ansible.builtin.copy:
         content: |
           user-db:user
@@ -30,38 +43,74 @@
         dest: /etc/dconf/profile/user
         mode: '0644'
 
-    - name: Set system-wide wallpaper via dconf
+    - name: Set system-wide user wallpaper via dconf
       ansible.builtin.copy:
         content: |
-          # NOX Company Wallpaper Settings
+          # NOX User Wallpaper Settings
           [org/gnome/desktop/background]
-          picture-uri='file://{{ wallpaper_system_path }}'
-          picture-uri-dark='file://{{ wallpaper_system_path }}'
+          picture-uri='file://{{ wallpaper_path }}'
+          picture-uri-dark='file://{{ wallpaper_path }}'
           picture-options='zoom'
           primary-color='#2e3436'
           secondary-color='#2e3436'
           
           [org/gnome/desktop/screensaver]
-          picture-uri='file://{{ wallpaper_system_path }}'
+          picture-uri='file://{{ wallpaper_path }}'
           picture-options='zoom'
         dest: /etc/dconf/db/local.d/01-nox-wallpaper
         mode: '0644'
       notify: update dconf
 
+    # ====== GDM (LOGIN SCREEN) CONFIGURATION ======
+    - name: Create GDM dconf database directory
+      ansible.builtin.file:
+        path: /etc/dconf/db/gdm.d
+        state: directory
+        mode: '0755'
+
+    - name: Create GDM dconf profile
+      ansible.builtin.copy:
+        content: |
+          user-db:user
+          system-db:gdm
+          file-db:/usr/share/gdm/greeter-dconf-defaults
+        dest: /etc/dconf/profile/gdm
+        mode: '0644'
+
+    - name: Configure GDM wallpaper and branding
+      ansible.builtin.copy:
+        content: |
+          # NOX GDM Login Screen Configuration
+          [org/gnome/desktop/background]
+          picture-uri='file://{{ wallpaper_path }}'
+          picture-options='zoom'
+          primary-color='#2e3436'
+          secondary-color='#2e3436'
+          
+          [org/gnome/desktop/screensaver]
+          picture-uri='file://{{ wallpaper_path }}'
+          picture-options='zoom'
+          
+          [org/gnome/login-screen]
+          logo='{{ logo_path if logo_source is defined else "" }}'
+          banner-message-enable=true
+          banner-message-text='NOX VFX - Authorized Users Only'
+        dest: /etc/dconf/db/gdm.d/01-nox-branding
+        mode: '0644'
+      notify: update dconf
+
+    # ====== USER SESSION SCRIPTS ======
     - name: Create wallpaper script for user sessions
       ansible.builtin.copy:
         content: |
           #!/bin/bash
           # NOX Wallpaper setter for AD users
           
-          # Wait for GNOME session to be fully loaded
+          # Wait for GNOME session to be ready
           sleep 10
           
-          # Ensure we have a display and session bus
-          if [ -z "$DISPLAY" ]; then
-              export DISPLAY=:0
-          fi
-          
+          # Set up environment
+          if [ -z "$DISPLAY" ]; then export DISPLAY=:0; fi
           if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
               export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
           fi
@@ -76,30 +125,25 @@
               ((timeout--))
           done
           
-          # Set wallpaper using gsettings
+          # Set wallpaper
           if gsettings list-schemas | grep -q "org.gnome.desktop.background"; then
-              gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_system_path }}"
-              gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_system_path }}"
+              gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_path }}"
+              gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_path }}"
               gsettings set org.gnome.desktop.background picture-options 'zoom'
+              gsettings set org.gnome.desktop.screensaver picture-uri "file://{{ wallpaper_path }}"
               
-              # Also set screensaver
-              gsettings set org.gnome.desktop.screensaver picture-uri "file://{{ wallpaper_system_path }}"
-              
-              # Log success
               logger "NOX wallpaper set for user $(whoami) on $(hostname)"
-          else
-              logger "Failed to set NOX wallpaper for user $(whoami) - gsettings not available"
           fi
         dest: /usr/local/bin/set-nox-wallpaper.sh
         mode: '0755'
 
-    - name: Create system-wide autostart directory
+    - name: Create autostart desktop entry
       ansible.builtin.file:
         path: /etc/xdg/autostart
         state: directory
         mode: '0755'
 
-    - name: Create autostart desktop entry for wallpaper
+    - name: Create autostart entry for wallpaper
       ansible.builtin.copy:
         content: |
           [Desktop Entry]
@@ -112,82 +156,87 @@
           X-GNOME-Autostart-enabled=true
           X-GNOME-Autostart-Delay=15
           Categories=System;Settings;
-          StartupNotify=false
         dest: /etc/xdg/autostart/nox-wallpaper.desktop
         mode: '0644'
 
-    - name: Add wallpaper script to system profile
+    - name: Add wallpaper to system profile
       ansible.builtin.copy:
         content: |
           #!/bin/bash
           # Set NOX wallpaper for GNOME sessions
           if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
-              # Run in background to not delay login
               (/usr/local/bin/set-nox-wallpaper.sh &) 2>/dev/null
           fi
         dest: /etc/profile.d/Z99-nox-wallpaper.sh
         mode: '0755'
 
-    - name: Create GDM (login screen) wallpaper configuration
-      ansible.builtin.copy:
-        content: |
-          [org/gnome/desktop/background]
-          picture-uri='file://{{ wallpaper_system_path }}'
-          picture-options='zoom'
-          primary-color='#2e3436'
-          
-          [org/gnome/login-screen]
-          logo='file://{{ wallpaper_system_path }}'
-        dest: /etc/dconf/db/gdm.d/01-nox-wallpaper
-        mode: '0644'
-      notify: update dconf
-
-    - name: Test if any users are currently logged into GNOME
+    # ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
+    - name: Apply wallpaper to currently logged-in users
       ansible.builtin.shell: |
-        # Check for active GNOME sessions
-        ps aux | grep -v grep | grep gnome-session | awk '{print $1}' | sort | uniq
-      register: active_gnome_users
-      changed_when: false
-      failed_when: false
-
-    - name: Set wallpaper for currently logged-in users
-      ansible.builtin.shell: |
-        for user in {{ active_gnome_users.stdout_lines | join(' ') }}; do
+        for user in $(ps aux | grep -v grep | grep gnome-session | awk '{print $1}' | sort | uniq); do
           if [ -n "$user" ] && [ "$user" != "gdm" ]; then
             user_id=$(id -u "$user" 2>/dev/null)
             if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
-              echo "Setting wallpaper for logged-in user: $user"
               sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_system_path }}" 2>/dev/null || true
+                gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_path }}" 2>/dev/null || true
               sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_system_path }}" 2>/dev/null || true
+                gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_path }}" 2>/dev/null || true
             fi
           fi
         done
-      when: active_gnome_users.stdout_lines | length > 0
       ignore_errors: yes
 
-    - name: Verify wallpaper file permissions and SELinux context
-      ansible.builtin.file:
-        path: "{{ wallpaper_system_path }}"
-        mode: '0644'
-        setype: usr_t
+    # ====== SELINUX AND PERMISSIONS ======
+    - name: Set proper SELinux contexts
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - "restorecon -R /usr/share/backgrounds/"
+        - "restorecon -R /usr/share/pixmaps/"
+        - "restorecon -R /etc/dconf/"
       ignore_errors: yes
+      when: ansible_selinux.status == "enabled"
 
-    - name: Display setup completion message
+    # ====== VERIFICATION ======
+    - name: Create verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== NOX Wallpaper Configuration Verification ==="
+          echo
+          echo "1. Files:"
+          echo "   Wallpaper: $(ls -la {{ wallpaper_path }} 2>/dev/null || echo 'NOT FOUND')"
+          echo "   Logo: $(ls -la {{ logo_path }} 2>/dev/null || echo 'NOT FOUND (optional)')"
+          echo
+          echo "2. Configuration files:"
+          echo "   User dconf: $(ls -la /etc/dconf/db/local.d/01-nox-wallpaper 2>/dev/null || echo 'NOT FOUND')"
+          echo "   GDM dconf: $(ls -la /etc/dconf/db/gdm.d/01-nox-branding 2>/dev/null || echo 'NOT FOUND')"
+          echo "   Autostart: $(ls -la /etc/xdg/autostart/nox-wallpaper.desktop 2>/dev/null || echo 'NOT FOUND')"
+          echo
+          echo "3. Current user wallpaper (if logged in):"
+          gsettings get org.gnome.desktop.background picture-uri 2>/dev/null || echo "Not available (not in GNOME session)"
+          echo
+          echo "=== To see changes: Log out and back in, or reboot ==="
+        dest: /usr/local/bin/verify-nox-wallpaper.sh
+        mode: '0755'
+
+    - name: Display completion summary
       ansible.builtin.debug:
         msg: |
-          NOX wallpaper deployment completed!
+          NOX Wallpaper deployment completed successfully!
           
-          Wallpaper location: {{ wallpaper_system_path }}
+          What was configured:
+          ✅ User desktop wallpaper (all AD users)
+          ✅ GDM login screen wallpaper
+          ✅ Screensaver wallpaper
+          ✅ Autostart script for new logins
+          ✅ System-wide dconf settings
           
-          The wallpaper will be applied:
-          1. Immediately for currently logged-in users
-          2. At next login for all AD users via autostart
-          3. Via system profile for all GNOME sessions
-          4. On the GDM login screen
+          To verify: Run /usr/local/bin/verify-nox-wallpaper.sh
           
-          Users may need to log out and back in to see the wallpaper.
+          Changes will be visible:
+          - Immediately for some logged-in users
+          - On next login for all users
+          - On login screen after logout/reboot
 
   handlers:
     - name: update dconf
