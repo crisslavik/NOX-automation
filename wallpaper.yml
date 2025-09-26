@@ -1,51 +1,132 @@
 ---
-- name: Simple wallpaper deployment (root connection)
+- name: AD-integrated wallpaper deployment
   hosts: all
   vars:
     wallpaper_source: "NOX_Wallpaper.jpg"
+    company_domain: "your-domain.com"  # Change this to your AD domain
   
   tasks:
-    - name: Find regular users
-      ansible.builtin.shell: "awk -F: '$3 >= 1000 && $3 < 60000 {print $1}' /etc/passwd"
-      register: users
-      changed_when: false
+    - name: Install required packages for AD integration
+      ansible.builtin.package:
+        name:
+          - dconf
+          - gsettings-desktop-schemas
+        state: present
 
-    - name: Copy wallpaper to /usr/share/backgrounds (system-wide)
+    - name: Copy wallpaper to system location
       ansible.builtin.copy:
         src: "{{ wallpaper_source }}"
-        dest: "/usr/share/backgrounds/wallpaper.jpg"
+        dest: "/usr/share/backgrounds/company-wallpaper.jpg"
         mode: '0644'
 
-    - name: Copy wallpaper to each user's home
+    - name: Create dconf machine database directory
+      ansible.builtin.file:
+        path: /etc/dconf/db/machine.d
+        state: directory
+        mode: '0755'
+
+    - name: Create machine dconf profile
       ansible.builtin.copy:
-        src: "{{ wallpaper_source }}"
-        dest: "/home/{{ item }}/wallpaper.jpg"
-        owner: "{{ item }}"
-        group: "{{ item }}"
+        content: |
+          user-db:user
+          system-db:machine
+        dest: /etc/dconf/profile/user
         mode: '0644'
-      loop: "{{ users.stdout_lines }}"
-      ignore_errors: yes  # In case home directory doesn't exist
 
-    - name: Create simple wallpaper script for each user
+    - name: Set machine-wide wallpaper settings
+      ansible.builtin.copy:
+        content: |
+          # Company wallpaper settings
+          [org/gnome/desktop/background]
+          picture-uri='file:///usr/share/backgrounds/company-wallpaper.jpg'
+          picture-uri-dark='file:///usr/share/backgrounds/company-wallpaper.jpg'
+          picture-options='zoom'
+          primary-color='#000000'
+          secondary-color='#000000'
+          
+          [org/gnome/desktop/screensaver]
+          picture-uri='file:///usr/share/backgrounds/company-wallpaper.jpg'
+          
+          # Lock these settings so users can't change them
+          [org/gnome/desktop/background]
+          picture-uri=@as []
+          picture-uri-dark=@as []
+        dest: /etc/dconf/db/machine.d/01-company-wallpaper
+        mode: '0644'
+
+    - name: Create dconf locks directory
+      ansible.builtin.file:
+        path: /etc/dconf/db/machine.d/locks
+        state: directory
+        mode: '0755'
+
+    - name: Lock wallpaper settings (prevent user changes)
+      ansible.builtin.copy:
+        content: |
+          # Lock company wallpaper settings
+          /org/gnome/desktop/background/picture-uri
+          /org/gnome/desktop/background/picture-uri-dark
+          /org/gnome/desktop/background/picture-options
+        dest: /etc/dconf/db/machine.d/locks/company-wallpaper
+        mode: '0644'
+
+    - name: Update dconf database
+      ansible.builtin.command: dconf update
+      changed_when: true
+
+    - name: Create startup script for SSSD users
       ansible.builtin.copy:
         content: |
           #!/bin/bash
-          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ]; then
-              gsettings set org.gnome.desktop.background picture-uri "file:///home/{{ item }}/wallpaper.jpg"
-          fi
-        dest: "/home/{{ item }}/set-wallpaper.sh"
-        owner: "{{ item }}"
-        group: "{{ item }}"
+          # Company wallpaper setter for AD users
+          
+          # Wait for GNOME session
+          while [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; do
+              sleep 1
+              export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+          done
+          
+          # Set wallpaper
+          gsettings set org.gnome.desktop.background picture-uri "file:///usr/share/backgrounds/company-wallpaper.jpg"
+          gsettings set org.gnome.desktop.background picture-uri-dark "file:///usr/share/backgrounds/company-wallpaper.jpg"
+          
+          # Log the action
+          logger "Company wallpaper set for user $(whoami)"
+        dest: /usr/local/bin/set-company-wallpaper
         mode: '0755'
-      loop: "{{ users.stdout_lines }}"
-      ignore_errors: yes
 
-    - name: Add to user .profile
-      ansible.builtin.lineinfile:
-        path: "/home/{{ item }}/.profile"
-        line: "[ -f ~/set-wallpaper.sh ] && ~/set-wallpaper.sh"
-        create: yes
-        owner: "{{ item }}"
-        group: "{{ item }}"
-      loop: "{{ users.stdout_lines }}"
-      ignore_errors: yes
+    - name: Create systemd user service template
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Set Company Wallpaper
+          After=graphical-session.target
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/set-company-wallpaper
+          RemainAfterExit=yes
+          
+          [Install]
+          WantedBy=default.target
+        dest: /etc/systemd/user/company-wallpaper.service
+        mode: '0644'
+
+    - name: Enable systemd user service globally
+      ansible.builtin.systemd:
+        name: company-wallpaper.service
+        enabled: yes
+        scope: global
+        daemon_reload: yes
+
+    - name: Create login script for all users
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Auto-start company wallpaper service for all users
+          if [ "$XDG_SESSION_TYPE" = "x11" ] || [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+              systemctl --user start company-wallpaper.service 2>/dev/null || \
+              /usr/local/bin/set-company-wallpaper &
+          fi
+        dest: /etc/profile.d/Z99-company-wallpaper.sh
+        mode: '0755'
