@@ -1,0 +1,31 @@
+---
+- name: Fix Slack repository issue on AlmaLinux
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Clean DNF cache on RedHat-based systems
+      ansible.builtin.command: dnf clean all
+      when: ansible_os_family == "RedHat"
+    
+    - name: Remove existing Slack repository file on RedHat-based systems
+      ansible.builtin.file:
+        path: /etc/yum.repos.d/slack-desktop.repo
+        state: absent
+      when: ansible_os_family == "RedHat"
+    
+    - name: Add official Slack repository on RedHat-based systems
+      ansible.builtin.yum_repository:
+        name: slack-desktop
+        description: Slack Official Repository
+        baseurl: https://packagecloud.io/slacktechnologies/slack/rpm/el/9/$basearch
+        gpgkey: https://packagecloud.io/slacktechnologies/slack/gpgkey
+        gpgcheck: yes
+        enabled: yes
+      when: ansible_os_family == "RedHat"
+      
+    - name: Install Slack after fixing the repo
+      ansible.builtin.dnf:
+        name: slack-4*
+        state: present
+      when: ansible_os_family == "RedHat"
