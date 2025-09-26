@@ -1,0 +1,389 @@
+---
+- name: Install NOX VFX Software Stack
+  hosts: all
+  become: yes
+  vars:
+    # Software versions (update these as needed)
+    chrome_rpm_url: "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm"
+    vscode_rpm_url: "https://code.visualstudio.com/sha/download?build=stable&os=linux-rpm-x64"
+    sublime_rpm_url: "https://download.sublimetext.com/sublime_text-4_build_4169-1.x86_64.rpm"
+    
+    # For local RPM files (alternative approach)
+    local_rpm_files:
+      - "google-chrome-stable_current_x86_64.rpm"
+      - "code-stable-x86_64.rpm"
+      - "sublime_text-4.rpm"
+
+  tasks:
+    # ====== REPOSITORY SETUP ======
+    - name: Add Google Chrome repository
+      ansible.builtin.yum_repository:
+        name: google-chrome
+        description: Google Chrome Repository
+        baseurl: http://dl.google.com/linux/chrome/rpm/stable/x86_64
+        gpgkey: https://dl.google.com/linux/linux_signing_key.pub
+        gpgcheck: yes
+        enabled: yes
+
+    - name: Add VS Code repository
+      ansible.builtin.yum_repository:
+        name: vscode
+        description: Visual Studio Code Repository
+        baseurl: https://packages.microsoft.com/yumrepos/vscode
+        gpgkey: https://packages.microsoft.com/keys/microsoft.asc
+        gpgcheck: yes
+        enabled: yes
+
+    - name: Add Brave Browser repository
+      ansible.builtin.shell: |
+        dnf config-manager --add-repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+        rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+      args:
+        creates: /etc/yum.repos.d/brave-browser.repo
+
+    - name: Add Sublime Text repository
+      ansible.builtin.shell: |
+        rpm -v --import https://download.sublimetext.com/sublimehq-rpm-pub.gpg
+        dnf config-manager --add-repo https://download.sublimetext.com/rpm/stable/x86_64/sublime-text.repo
+      args:
+        creates: /etc/yum.repos.d/sublime-text.repo
+
+    # ====== INSTALL FROM REPOSITORIES (PREFERRED) ======
+    - name: Update package cache
+      ansible.builtin.dnf:
+        update_cache: yes
+
+    - name: Install software from repositories
+      ansible.builtin.dnf:
+        name:
+          - google-chrome-stable
+          - code
+          - brave-browser
+          - sublime-text
+        state: present
+      register: repo_install
+      ignore_errors: yes
+
+    # ====== SLACK INSTALLATION (Flatpak - Best for Slack) ======
+    - name: Install Flatpak
+      ansible.builtin.dnf:
+        name: flatpak
+        state: present
+
+    - name: Add Flathub repository
+      ansible.builtin.flatpak_remote:
+        name: flathub
+        state: present
+        flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
+
+    - name: Install Slack via Flatpak
+      ansible.builtin.flatpak:
+        name: com.slack.Slack
+        state: present
+      register: slack_install
+      ignore_errors: yes
+
+    # ====== BLENDER INSTALLATION (Multiple options) ======
+    - name: Try to install Blender from EPEL
+      ansible.builtin.dnf:
+        name: 
+          - epel-release
+        state: present
+
+    - name: Install Blender from repositories
+      ansible.builtin.dnf:
+        name: blender
+        state: present
+      register: blender_repo_install
+      ignore_errors: yes
+
+    - name: Install Blender via Flatpak if repo failed
+      ansible.builtin.flatpak:
+        name: org.blender.Blender
+        state: present
+      when: blender_repo_install is failed
+      register: blender_flatpak_install
+      ignore_errors: yes
+
+    # ====== FALLBACK: INSTALL FROM LOCAL RPM FILES ======
+    - name: Check if local RPM files exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: rpm_files_check
+      loop: "{{ local_rpm_files }}"
+      delegate_to: localhost
+      become: no
+
+    - name: Copy RPM files to target machines (if they exist locally)
+      ansible.builtin.copy:
+        src: "{{ item.item }}"
+        dest: "/tmp/{{ item.item }}"
+        mode: '0644'
+      loop: "{{ rpm_files_check.results }}"
+      when: item.stat.exists
+      register: rpm_copied
+
+    - name: Install from local RPM files (fallback)
+      ansible.builtin.dnf:
+        name: "/tmp/{{ item.item.item }}"
+        state: present
+        disable_gpg_check: yes
+      loop: "{{ rpm_copied.results | default([]) }}"
+      when: 
+        - item.changed is defined
+        - item.changed
+        - repo_install is failed
+      ignore_errors: yes
+
+    # ====== ALTERNATIVE: DIRECT RPM DOWNLOAD AND INSTALL ======
+    - name: Download and install Chrome (if repo failed)
+      ansible.builtin.dnf:
+        name: "{{ chrome_rpm_url }}"
+        state: present
+        disable_gpg_check: yes
+      when: "'google-chrome-stable' not in ansible_facts.packages | default({})"
+      ignore_errors: yes
+
+    - name: Download and install VS Code (if repo failed)
+      ansible.builtin.dnf:
+        name: "{{ vscode_rpm_url }}"
+        state: present
+        disable_gpg_check: yes
+      when: "'code' not in ansible_facts.packages | default({})"
+      ignore_errors: yes
+
+    # ====== ADDITIONAL DEVELOPMENT TOOLS ======
+    - name: Install additional development tools
+      ansible.builtin.dnf:
+        name:
+          - git
+          - curl
+          - wget
+          - htop
+          - tree
+          - vim
+          - nano
+          - unzip
+          - gcc
+          - make
+          - cmake
+          - python3-pip
+          - nodejs
+          - npm
+        state: present
+
+    # ====== VERIFICATION ======
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Create software verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== NOX VFX Software Installation Verification ==="
+          echo
+          
+          # Check installed packages
+          echo "📦 Checking installed software:"
+          echo
+          
+          # Chrome
+          if command -v google-chrome &> /dev/null; then
+              echo "✅ Google Chrome: $(google-chrome --version 2>/dev/null || echo 'Installed')"
+          else
+              echo "❌ Google Chrome: Not found"
+          fi
+          
+          # Brave
+          if command -v brave-browser &> /dev/null; then
+              echo "✅ Brave Browser: $(brave-browser --version 2>/dev/null || echo 'Installed')"
+          else
+              echo "❌ Brave Browser: Not found"
+          fi
+          
+          # VS Code
+          if command -v code &> /dev/null; then
+              echo "✅ VS Code: $(code --version 2>/dev/null | head -1 || echo 'Installed')"
+          else
+              echo "❌ VS Code: Not found"
+          fi
+          
+          # Sublime Text
+          if command -v subl &> /dev/null; then
+              echo "✅ Sublime Text: Installed"
+          else
+              echo "❌ Sublime Text: Not found"
+          fi
+          
+          # Slack (Flatpak)
+          if flatpak list | grep -q com.slack.Slack; then
+              echo "✅ Slack: Installed (Flatpak)"
+          else
+              echo "❌ Slack: Not found"
+          fi
+          
+          # Blender
+          if command -v blender &> /dev/null; then
+              echo "✅ Blender: $(blender --version 2>/dev/null | head -1 || echo 'Installed')"
+          elif flatpak list | grep -q org.blender.Blender; then
+              echo "✅ Blender: Installed (Flatpak)"
+          else
+              echo "❌ Blender: Not found"
+          fi
+          
+          echo
+          echo "🔧 Development tools:"
+          echo "   Git: $(git --version 2>/dev/null || echo 'Not found')"
+          echo "   Python: $(python3 --version 2>/dev/null || echo 'Not found')"
+          echo "   Node.js: $(node --version 2>/dev/null || echo 'Not found')"
+          echo
+          echo "📌 GNOME Favorites:"
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              favorites=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "Not available")
+              if [[ "$favorites" == *"google-chrome"* ]] && [[ "$favorites" == *"slack"* ]]; then
+                  echo "✅ GNOME favorites configured with Chrome and Slack"
+              else
+                  echo "❌ GNOME favorites not properly configured"
+                  echo "   Current: $favorites"
+              fi
+          else
+              echo "ℹ️  Not in GNOME session - cannot check favorites"
+          fi
+          echo
+          echo "=== Installation Summary Complete ==="
+        dest: /usr/local/bin/verify-nox-software.sh
+        mode: '0755'
+
+    # ====== GNOME FAVORITES CONFIGURATION ======
+    - name: Create GNOME favorites configuration script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Set GNOME favorites for NOX VFX users
+          
+          # Wait for GNOME session to be ready
+          sleep 5
+          
+          # Set up environment
+          if [ -z "$DISPLAY" ]; then export DISPLAY=:0; fi
+          if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+              export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+          fi
+          
+          # Wait for gsettings to be available
+          timeout=30
+          while [ $timeout -gt 0 ]; do
+              if gsettings list-schemas | grep -q "org.gnome.shell"; then
+                  break
+              fi
+              sleep 1
+              ((timeout--))
+          done
+          
+          # Define favorite applications (in order they'll appear)
+          FAVORITES="['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.blender.Blender.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Software.desktop']"
+          
+          # Set the favorites
+          if gsettings list-schemas | grep -q "org.gnome.shell"; then
+              gsettings set org.gnome.shell favorite-apps "$FAVORITES"
+              logger "GNOME favorites set for user $(whoami) on $(hostname)"
+          else
+              logger "Failed to set GNOME favorites for user $(whoami) - gsettings not available"
+          fi
+        dest: /usr/local/bin/set-gnome-favorites.sh
+        mode: '0755'
+
+    - name: Create system-wide dconf settings for GNOME favorites
+      ansible.builtin.copy:
+        content: |
+          # NOX VFX GNOME Favorites Configuration
+          [org/gnome/shell]
+          favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.blender.Blender.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Software.desktop']
+          
+          # Optional: Configure GNOME Shell extensions and appearance
+          [org/gnome/desktop/interface]
+          show-battery-percentage=true
+          clock-show-seconds=false
+          clock-show-weekday=true
+          
+          # Optional: Configure file manager favorites
+          [org/gtk/settings/file-chooser]
+          show-hidden=false
+          show-size-column=true
+          show-type-column=true
+          sort-directories-first=true
+        dest: /etc/dconf/db/local.d/02-nox-gnome-favorites
+        mode: '0644'
+      notify: update dconf
+
+    - name: Create autostart entry for GNOME favorites
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=NOX GNOME Favorites
+          Comment=Set NOX VFX GNOME favorites bar
+          Exec=/usr/local/bin/set-gnome-favorites.sh
+          Hidden=false
+          NoDisplay=true
+          X-GNOME-Autostart-enabled=true
+          X-GNOME-Autostart-Delay=20
+          Categories=System;Settings;
+        dest: /etc/xdg/autostart/nox-gnome-favorites.desktop
+        mode: '0644'
+
+    - name: Add favorites script to system profile
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Set NOX GNOME favorites for GNOME sessions
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              # Run in background with delay to ensure GNOME Shell is ready
+              (sleep 30 && /usr/local/bin/set-gnome-favorites.sh &) 2>/dev/null
+          fi
+        dest: /etc/profile.d/Z98-nox-gnome-favorites.sh
+        mode: '0755'
+
+    - name: Apply GNOME favorites to currently logged-in users
+      ansible.builtin.shell: |
+        for user in $(ps aux | grep -v grep | grep gnome-shell | awk '{print $1}' | sort | uniq); do
+          if [ -n "$user" ] && [ "$user" != "gdm" ]; then
+            user_id=$(id -u "$user" 2>/dev/null)
+            if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
+              echo "Setting GNOME favorites for logged-in user: $user"
+              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
+                gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.blender.Blender.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Software.desktop']" 2>/dev/null || true
+            fi
+          fi
+        done
+      ignore_errors: yes
+
+    - name: Display installation summary
+      ansible.builtin.debug:
+        msg: |
+          NOX VFX Software installation completed!
+          
+          Installed software:
+          🌐 Browsers: Google Chrome, Brave Browser
+          💻 Editors: VS Code, Sublime Text
+          💬 Communication: Slack (Flatpak)
+          🎨 3D/VFX: Blender
+          🔧 Development tools and utilities
+          
+          GNOME Favorites configured:
+          📌 File Manager, Chrome, Slack, VS Code, Sublime, Blender, Terminal, Software
+          
+          To verify installations, run:
+          sudo /usr/local/bin/verify-nox-software.sh
+          
+          Note: Favorites will appear after logout/login or running:
+          /usr/local/bin/set-gnome-favorites.sh
+
+    # ====== CLEANUP ======
+    - name: Clean up temporary RPM files
+      ansible.builtin.file:
+        path: "/tmp/{{ item }}"
+        state: absent
+      loop: "{{ local_rpm_files }}"
+      ignore_errors: yes
