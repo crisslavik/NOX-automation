@@ -175,7 +175,7 @@
           - git
           - curl
           - wget
-          - htop
+          # - htop  # Removed - system monitoring tool that shows in apps menu
           - tree
           - vim
           - nano
@@ -481,8 +481,8 @@
               ((timeout--))
           done
           
-          # Define favorite applications (in order they'll appear)
-          FAVORITES="['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop', 'org.gnome.Terminal.desktop']"
+          # Define favorite applications (in order they'll appear) - removed Terminal
+          FAVORITES="['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop']"
           
           # Set the favorites
           if gsettings list-schemas | grep -q "org.gnome.shell"; then
@@ -499,7 +499,7 @@
         content: |
           # NOX VFX GNOME Favorites Configuration
           [org/gnome/shell]
-          favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop', 'org.gnome.Terminal.desktop']
+          favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop']
           
           # Optional: Configure GNOME Shell extensions and appearance
           [org/gnome/desktop/interface]
@@ -553,7 +553,7 @@
             if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
               echo "Setting GNOME favorites for logged-in user: $user"
               sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop', 'org.gnome.Terminal.desktop']" 2>/dev/null || true
+                gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop']" 2>/dev/null || true
             fi
           fi
         done
