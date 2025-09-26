@@ -16,8 +16,8 @@
     nfs_mounts:
       - { src: "/volume1/Projects", dest: "/mnt/Projects" }
       - { src: "/volume1/Library", dest: "/mnt/Library" }
-      - { src: "/volume1/Archive", dest: "/mnt/Archive" }
-      - { src: "/volume2/Expansion1", dest: "/mnt/Expansion" }
+#      - { src: "/volume1/Archive", dest: "/mnt/Archive" }
+#      - { src: "/volume2/Expansion1", dest: "/mnt/Expansion" }
 
   tasks:
     - name: Update all packages
@@ -184,9 +184,9 @@
 
     - name: Display NFS mount results
       ansible.builtin.debug:
-        msg: "Mount {{ item.item.dest }}: {{ 'SUCCESS' if item.rc == 0 else 'FAILED - ' + item.msg | default('Unknown error') }}"
+        msg: "Mount {{ item.item.dest }}: {{ 'SUCCESS' if item.changed else 'ALREADY MOUNTED' }}"
       loop: "{{ nfs_mount_result.results }}"
-      when: nfs_mount_result is defined
+      when: nfs_mount_result is defined and nfs_mount_result.results is defined
 
     - name: Verify domain join status
       ansible.builtin.command: realm list
