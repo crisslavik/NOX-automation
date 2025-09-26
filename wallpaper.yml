@@ -3,7 +3,7 @@
   hosts: all
   vars:
     wallpaper_source: "NOX_Wallpaper.jpg"
-    company_domain: "your-domain.com"  # Change this to your AD domain
+    company_domain: "ad.noxvfx.com"  # Change this to your AD domain
   
   tasks:
     - name: Install required packages for AD integration
