@@ -1,0 +1,15 @@
+---
+- name: Remove Blender
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Ensure Blender directory is absent
+      ansible.builtin.file:
+        path: /opt/blender
+        state: absent
+
+    - name: Ensure Blender symlink is absent
+      ansible.builtin.file:
+        path: /usr/local/bin/blender
+        state: absent
