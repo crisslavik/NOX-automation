@@ -83,6 +83,22 @@
       register: slack_install
       ignore_errors: yes
 
+    # ====== KRITA INSTALLATION (Multiple options) ======
+    - name: Try to install Krita from repositories
+      ansible.builtin.dnf:
+        name: krita
+        state: present
+      register: krita_repo_install
+      ignore_errors: yes
+
+    - name: Install Krita via Flatpak if repo failed
+      ansible.builtin.flatpak:
+        name: org.kde.krita
+        state: present
+      when: krita_repo_install is failed
+      register: krita_flatpak_install
+      ignore_errors: yes
+
     # ====== BLENDER INSTALLATION (Multiple options) ======
     - name: Try to install Blender from EPEL
       ansible.builtin.dnf:
@@ -153,7 +169,7 @@
       ignore_errors: yes
 
     # ====== ADDITIONAL DEVELOPMENT TOOLS ======
-    - name: Install additional development tools
+    - name: Install additional development tools and GNOME utilities
       ansible.builtin.dnf:
         name:
           - git
@@ -170,6 +186,12 @@
           - python3-pip
           - nodejs
           - npm
+          # GNOME utilities
+          - gnome-extensions-app
+          - gnome-tweaks
+          - gnome-shell-extension-user-theme
+          - gnome-shell-extension-dash-to-dock
+          - gnome-shell-extension-desktop-icons
         state: present
 
     # ====== VERIFICATION ======
@@ -232,6 +254,29 @@
               echo "❌ Blender: Not found"
           fi
           
+          # Krita
+          if command -v krita &> /dev/null; then
+              echo "✅ Krita: $(krita --version 2>/dev/null | head -1 || echo 'Installed')"
+          elif flatpak list | grep -q org.kde.krita; then
+              echo "✅ Krita: Installed (Flatpak)"
+          else
+              echo "❌ Krita: Not found"
+          fi
+          
+          # GNOME Extensions
+          if command -v gnome-extensions &> /dev/null; then
+              echo "✅ GNOME Extensions: Installed"
+          else
+              echo "❌ GNOME Extensions: Not found"
+          fi
+          
+          # GNOME Tweaks
+          if command -v gnome-tweaks &> /dev/null; then
+              echo "✅ GNOME Tweaks: Installed"
+          else
+              echo "❌ GNOME Tweaks: Not found"
+          fi
+          
           echo
           echo "🔧 Development tools:"
           echo "   Git: $(git --version 2>/dev/null || echo 'Not found')"
@@ -241,21 +286,176 @@
           echo "📌 GNOME Favorites:"
           if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
               favorites=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "Not available")
-              if [[ "$favorites" == *"google-chrome"* ]] && [[ "$favorites" == *"slack"* ]]; then
-                  echo "✅ GNOME favorites configured with Chrome and Slack"
+              if [[ "$favorites" == *"google-chrome"* ]] && [[ "$favorites" == *"slack"* ]] && [[ "$favorites" == *"Extensions"* ]]; then
+                  echo "✅ GNOME favorites configured with Chrome, Slack, Extensions, and Tweaks"
               else
                   echo "❌ GNOME favorites not properly configured"
                   echo "   Current: $favorites"
               fi
+              
+              # Check theme settings
+              theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null || echo "Not available")
+              color_scheme=$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "Not available")
+              echo "🎨 Theme: $theme"
+              echo "🌙 Color scheme: $color_scheme"
+              
+              # Check extensions
+              enabled_extensions=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo "Not available")
+              if [[ "$enabled_extensions" == *"dash-to-dock"* ]]; then
+                  echo "✅ Dash to Dock extension enabled"
+              else
+                  echo "ℹ️  Extensions: $enabled_extensions"
+              fi
           else
-              echo "ℹ️  Not in GNOME session - cannot check favorites"
+              echo "ℹ️  Not in GNOME session - cannot check favorites and theme"
           fi
           echo
           echo "=== Installation Summary Complete ==="
         dest: /usr/local/bin/verify-nox-software.sh
         mode: '0755'
 
-    # ====== GNOME FAVORITES CONFIGURATION ======
+    # ====== GNOME THEME AND APPEARANCE CONFIGURATION ======
+    - name: Create GNOME theme and appearance configuration script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # NOX VFX GNOME Theme and Appearance Configuration
+          
+          # Wait for GNOME session to be ready
+          sleep 10
+          
+          # Set up environment
+          if [ -z "$DISPLAY" ]; then export DISPLAY=:0; fi
+          if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+              export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+          fi
+          
+          # Wait for gsettings and GNOME Shell to be available
+          timeout=60
+          while [ $timeout -gt 0 ]; do
+              if gsettings list-schemas | grep -q "org.gnome.desktop.interface" && pgrep -x gnome-shell > /dev/null; then
+                  break
+              fi
+              sleep 2
+              ((timeout--))
+          done
+          
+          echo "Configuring GNOME theme and appearance for user $(whoami)..."
+          
+          # Set dark theme
+          gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
+          gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+          
+          # Configure desktop interface
+          gsettings set org.gnome.desktop.interface show-battery-percentage true 2>/dev/null || true
+          gsettings set org.gnome.desktop.interface clock-show-weekday true 2>/dev/null || true
+          gsettings set org.gnome.desktop.interface clock-show-seconds false 2>/dev/null || true
+          gsettings set org.gnome.desktop.interface enable-hot-corners false 2>/dev/null || true
+          
+          # Configure window manager
+          gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close' 2>/dev/null || true
+          gsettings set org.gnome.desktop.wm.preferences theme 'Adwaita-dark' 2>/dev/null || true
+          
+          # Configure file manager
+          gsettings set org.gtk.settings.file-chooser show-hidden false 2>/dev/null || true
+          gsettings set org.gtk.settings.file-chooser show-size-column true 2>/dev/null || true
+          gsettings set org.gtk.settings.file-chooser show-type-column true 2>/dev/null || true
+          gsettings set org.gtk.settings.file-chooser sort-directories-first true 2>/dev/null || true
+          
+          # Configure power settings for workstations
+          gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null || true
+          gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'suspend' 2>/dev/null || true
+          
+          # Enable GNOME Shell extensions
+          gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM' 2>/dev/null || true
+          gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false 2>/dev/null || true
+          gsettings set org.gnome.shell.extensions.dash-to-dock autohide true 2>/dev/null || true
+          gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true 2>/dev/null || true
+          gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false 2>/dev/null || true
+          gsettings set org.gnome.shell.extensions.dash-to-dock show-trash true 2>/dev/null || true
+          gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts true 2>/dev/null || true
+          
+          # Enable extensions
+          gsettings set org.gnome.shell enabled-extensions "['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']" 2>/dev/null || true
+          
+          # Terminal settings (dark theme)
+          profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
+          if [ -n "$profile_id" ]; then
+              gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ use-theme-colors false 2>/dev/null || true
+              gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ background-color 'rgb(23,20,33)' 2>/dev/null || true
+              gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ foreground-color 'rgb(208,207,204)' 2>/dev/null || true
+          fi
+          
+          logger "NOX VFX GNOME theme and appearance configured for user $(whoami)"
+          echo "GNOME configuration completed for user $(whoami)"
+        dest: /usr/local/bin/set-nox-gnome-theme.sh
+        mode: '0755'
+
+    - name: Create system-wide dconf settings for GNOME theme and appearance
+      ansible.builtin.copy:
+        content: |
+          # NOX VFX GNOME Theme and Appearance Configuration
+          
+          # Dark theme settings
+          [org/gnome/desktop/interface]
+          gtk-theme='Adwaita-dark'
+          color-scheme='prefer-dark'
+          show-battery-percentage=true
+          clock-show-weekday=true
+          clock-show-seconds=false
+          enable-hot-corners=false
+          
+          # Window manager settings
+          [org/gnome/desktop/wm/preferences]
+          button-layout='appmenu:minimize,maximize,close'
+          theme='Adwaita-dark'
+          
+          # File manager settings for VFX workflow
+          [org/gtk/settings/file-chooser]
+          show-hidden=false
+          show-size-column=true
+          show-type-column=true
+          sort-directories-first=true
+          
+          # Power settings for workstations
+          [org/gnome/settings-daemon/plugins/power]
+          sleep-inactive-ac-type='nothing'
+          sleep-inactive-battery-type='suspend'
+          
+          # GNOME Shell extensions configuration
+          [org/gnome/shell]
+          enabled-extensions=['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']
+          
+          # Dash to Dock extension settings
+          [org/gnome/shell/extensions/dash-to-dock]
+          dock-position='BOTTOM'
+          dock-fixed=false
+          autohide=true
+          intellihide=true
+          extend-height=false
+          show-trash=true
+          show-mounts=true
+          transparency-mode='FIXED'
+          background-opacity=0.8
+        dest: /etc/dconf/db/local.d/03-nox-gnome-theme
+        mode: '0644'
+      notify: update dconf
+
+    - name: Create autostart entry for GNOME theme configuration
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=NOX GNOME Theme
+          Comment=Configure NOX VFX GNOME theme and appearance
+          Exec=/usr/local/bin/set-nox-gnome-theme.sh
+          Hidden=false
+          NoDisplay=true
+          X-GNOME-Autostart-enabled=true
+          X-GNOME-Autostart-Delay=30
+          Categories=System;Settings;
+        dest: /etc/xdg/autostart/nox-gnome-theme.desktop
+        mode: '0644'
     - name: Create GNOME favorites configuration script
       ansible.builtin.copy:
         content: |
@@ -282,7 +482,7 @@
           done
           
           # Define favorite applications (in order they'll appear)
-          FAVORITES="['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.blender.Blender.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Software.desktop']"
+          FAVORITES="['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop', 'org.gnome.Terminal.desktop']"
           
           # Set the favorites
           if gsettings list-schemas | grep -q "org.gnome.shell"; then
@@ -299,7 +499,7 @@
         content: |
           # NOX VFX GNOME Favorites Configuration
           [org/gnome/shell]
-          favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.blender.Blender.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Software.desktop']
+          favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop', 'org.gnome.Terminal.desktop']
           
           # Optional: Configure GNOME Shell extensions and appearance
           [org/gnome/desktop/interface]
@@ -353,7 +553,7 @@
             if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
               echo "Setting GNOME favorites for logged-in user: $user"
               sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.blender.Blender.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.Software.desktop']" 2>/dev/null || true
+                gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'com.slack.Slack.desktop', 'code.desktop', 'sublime_text.desktop', 'org.kde.krita.desktop', 'org.blender.Blender.desktop', 'org.gnome.Extensions.desktop', 'org.gnome.tweaks.desktop', 'org.gnome.Terminal.desktop']" 2>/dev/null || true
             fi
           fi
         done
@@ -369,10 +569,15 @@
           💻 Editors: VS Code, Sublime Text
           💬 Communication: Slack (Flatpak)
           🎨 3D/VFX: Blender
-          🔧 Development tools and utilities
+          🔧 GNOME Tools: Extensions App, Tweaks
+          🛠️ Development tools and utilities
           
-          GNOME Favorites configured:
-          📌 File Manager, Chrome, Slack, VS Code, Sublime, Blender, Terminal, Software
+          GNOME Configuration:
+          📌 Favorites: File Manager, Chrome, Slack, VS Code, Sublime, Blender, Extensions, Tweaks, Terminal
+          🌙 Dark theme enabled
+          🎯 Dash-to-dock configured (bottom, autohide)
+          ⚡ Power settings optimized for workstations
+          🔧 Interface optimized for VFX work
           
           To verify installations, run:
           sudo /usr/local/bin/verify-nox-software.sh
