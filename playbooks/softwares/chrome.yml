@@ -1,0 +1,47 @@
+---
+# Install Google Chrome from RPM
+- name: Install Google Chrome
+  hosts: all
+  become: yes
+  vars:
+    chrome_rpm_file: "browsers/google-chrome-stable_current_x86_64.rpm"
+    
+  tasks:
+    - name: Check if Chrome RPM exists
+      ansible.builtin.stat:
+        path: "{{ chrome_rpm_file }}"
+      register: chrome_rpm_check
+      delegate_to: localhost
+      become: no
+
+    - name: Fail if Chrome RPM not found
+      ansible.builtin.fail:
+        msg: "Chrome RPM not found at {{ chrome_rpm_file }}. Please download it first."
+      when: not chrome_rpm_check.stat.exists
+
+    - name: Copy Chrome RPM to target machine
+      ansible.builtin.copy:
+        src: "{{ chrome_rpm_file }}"
+        dest: "/tmp/google-chrome-stable.rpm"
+        mode: '0644'
+
+    - name: Install Google Chrome from RPM
+      ansible.builtin.dnf:
+        name: "/tmp/google-chrome-stable.rpm"
+        state: present
+        disable_gpg_check: yes
+      register: chrome_install
+
+    - name: Verify Chrome installation
+      ansible.builtin.command: google-chrome --version
+      register: chrome_version
+      changed_when: false
+
+    - name: Display Chrome version
+      ansible.builtin.debug:
+        msg: "✅ Google Chrome installed: {{ chrome_version.stdout }}"
+
+    - name: Clean up temporary RPM file
+      ansible.builtin.file:
+        path: "/tmp/google-chrome-stable.rpm"
+        state: absent
