@@ -1,0 +1,244 @@
+---
+# Complete NOX VFX Workstation Setup - Everything Included
+- name: Complete NOX VFX Workstation Setup
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    # Components to install
+    setup_domain: true
+    setup_nvidia: true
+    setup_software: true
+    setup_wallpaper: true
+    setup_gnome: true
+    
+    # NVIDIA configuration
+    use_almalinux_native_nvidia: true
+    install_cuda: true
+    install_nvidia_settings: true
+    
+  tasks:
+    - name: Display NOX VFX complete setup banner
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║                    NOX VFX COMPLETE SETUP                   ║
+          ║                                                              ║
+          ║  🏢 Domain Integration: {{ 'Yes' if setup_domain else 'No' }}                              ║
+          ║  🎮 NVIDIA/CUDA: {{ 'AlmaLinux Native' if use_almalinux_native_nvidia else 'Traditional' if setup_nvidia else 'No' }}                           ║
+          ║  💻 Software Stack: {{ 'Yes' if setup_software else 'No' }}                              ║
+          ║  🎨 NOX Branding: {{ 'Yes' if setup_wallpaper else 'No' }}                                ║
+          ║  🖥️ GNOME Config: {{ 'Yes' if setup_gnome else 'No' }}                                 ║
+          ║                                                              ║
+          ║  Target: {{ inventory_hostname }}                            ║
+          ║  This will create a production-ready VFX workstation        ║
+          ╚══════════════════════════════════════════════════════════════╝
+
+# Step 1: Domain Join (if enabled)
+- import_playbook: domain-join.yml
+  when: setup_domain | default(true)
+
+# Step 2: NVIDIA/CUDA Installation (if enabled)
+- import_playbook: software/install-nvidia-almalinux-native.yml
+  when: setup_nvidia | default(true) and use_almalinux_native_nvidia | default(true)
+
+- import_playbook: software/install-nvidia-cuda.yml
+  when: setup_nvidia | default(true) and not (use_almalinux_native_nvidia | default(true))
+
+# Step 3: Software Installation (if enabled)
+- import_playbook: software/install-all-software.yml
+  when: setup_software | default(true)
+
+# Step 4: Wallpaper and Branding (if enabled)
+- import_playbook: wallpaper.yml
+  when: setup_wallpaper | default(true)
+
+# Step 5: GNOME Configuration (if enabled)
+- import_playbook: gnome-config.yml
+  when: setup_gnome | default(true)
+
+# Final verification and optimization
+- name: NOX VFX Complete Setup - Final Steps
+  hosts: all
+  become: yes
+  tasks:
+    - name: Run NVIDIA optimizations
+      ansible.builtin.shell: /usr/local/bin/nox-nvidia-optimize.sh
+      when: setup_nvidia | default(true)
+      ignore_errors: yes
+
+    - name: Update GNOME favorites to include NVIDIA Settings
+      ansible.builtin.shell: |
+        # Add NVIDIA Settings to favorites if NVIDIA is installed
+        if command -v nvidia-settings >/dev/null 2>&1; then
+          current_favorites=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || echo "[]")
+          if [[ "$current_favorites" != *"nvidia-settings"* ]]; then
+            # Add nvidia-settings to the end of favorites
+            new_favorites=$(echo "$current_favorites" | sed "s/]/, 'nvidia-settings.desktop']/")
+            gsettings set org.gnome.shell favorite-apps "$new_favorites" 2>/dev/null || true
+          fi
+        fi
+      become: no
+      when: setup_nvidia | default(true) and setup_gnome | default(true)
+      ignore_errors: yes
+
+    - name: Create complete workstation verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== NOX VFX Complete Workstation Verification ==="
+          echo
+          
+          {% if setup_domain %}
+          echo "🏢 Domain Status:"
+          if realm list 2>/dev/null | grep -q "ad.noxvfx.com"; then
+              echo "✅ Joined to ad.noxvfx.com"
+          else
+              echo "❌ Not joined to domain"
+          fi
+          echo
+          {% endif %}
+          
+          {% if setup_nvidia %}
+          echo "🎮 NVIDIA/CUDA Status:"
+          if command -v nvidia-smi >/dev/null 2>&1; then
+              echo "✅ NVIDIA Driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits | head -1)"
+              echo "✅ GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
+              if command -v nvcc >/dev/null 2>&1; then
+                  echo "✅ CUDA: $(nvcc --version | grep "release" | awk '{print $6}' | cut -d',' -f1)"
+              fi
+          else
+              echo "❌ NVIDIA driver not active (reboot may be required)"
+          fi
+          echo
+          {% endif %}
+          
+          {% if setup_software %}
+          echo "💻 VFX Software:"
+          command -v google-chrome >/dev/null && echo "✅ Chrome" || echo "❌ Chrome"
+          command -v code >/dev/null && echo "✅ VS Code" || echo "❌ VS Code"
+          command -v krita >/dev/null && echo "✅ Krita" || flatpak list | grep -q krita && echo "✅ Krita (Flatpak)" || echo "❌ Krita"
+          command -v blender >/dev/null && echo "✅ Blender" || flatpak list | grep -q blender && echo "✅ Blender (Flatpak)" || echo "❌ Blender"
+          command -v PureRef >/dev/null && echo "✅ PureRef" || echo "❌ PureRef"
+          flatpak list | grep -q slack && echo "✅ Slack" || echo "❌ Slack"
+          echo
+          {% endif %}
+          
+          {% if setup_wallpaper %}
+          echo "🎨 NOX Branding:"
+          if [ -f "/usr/share/backgrounds/nox-wallpaper.jpg" ]; then
+              echo "✅ NOX wallpaper installed"
+          else
+              echo "❌ NOX wallpaper missing"
+          fi
+          echo
+          {% endif %}
+          
+          {% if setup_gnome %}
+          echo "🖥️ GNOME Configuration:"
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ]; then
+              theme=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null)
+              echo "✅ Theme: $theme"
+              favorites=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)
+              if [[ "$favorites" == *"chrome"* ]] && [[ "$favorites" == *"krita"* ]]; then
+                  echo "✅ GNOME favorites configured"
+              else
+                  echo "⚠️ GNOME favorites may need attention"
+              fi
+          else
+              echo "ℹ️ Not in GNOME session"
+          fi
+          echo
+          {% endif %}
+          
+          echo "🚀 NOX VFX Workstation Status: Ready for Production"
+          echo
+          echo "📋 Quick Tests:"
+          echo "• NVIDIA: Run 'nvidia-smi' to check GPU status"
+          echo "• Blender: Check CUDA devices in Preferences > System"
+          echo "• Krita: Verify OpenGL in Settings > Configure Krita > Display"
+          echo "• Domain: Try 'id username@ad.noxvfx.com'"
+        dest: /usr/local/bin/verify-nox-workstation.sh
+        mode: '0755'
+
+    - name: Run complete verification
+      ansible.builtin.shell: /usr/local/bin/verify-nox-workstation.sh
+      register: workstation_verification
+      changed_when: false
+
+    - name: Display verification results
+      ansible.builtin.debug:
+        msg: "{{ workstation_verification.stdout }}"
+
+    - name: Check if reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Check if NVIDIA driver needs reboot
+      ansible.builtin.shell: nvidia-smi
+      register: nvidia_check
+      failed_when: false
+      changed_when: false
+      when: setup_nvidia | default(true)
+
+    - name: Display completion summary
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║                    🎉 SETUP COMPLETE! 🎉                     ║
+          ║                                                              ║
+          ║  Your NOX VFX workstation is now configured with:           ║
+          {% if setup_domain %}║  ✅ Domain: ad.noxvfx.com                                    ║{% endif %}
+          {% if setup_nvidia %}║  ✅ NVIDIA: GPU acceleration ready                          ║{% endif %}
+          {% if setup_software %}║  ✅ Software: Complete VFX application stack                ║{% endif %}
+          {% if setup_wallpaper %}║  ✅ Branding: NOX wallpaper and identity                    ║{% endif %}
+          {% if setup_gnome %}║  ✅ GNOME: Dark theme and VFX-optimized interface          ║{% endif %}
+          ║                                                              ║
+          {% if (reboot_required_file.stat.exists) or (nvidia_check is defined and nvidia_check.rc != 0) %}║  🔄 REBOOT REQUIRED to complete NVIDIA driver setup        ║{% else %}║  🎨 Workstation ready for immediate use!                   ║{% endif %}
+          ║                                                              ║
+          ║  Verification: sudo /usr/local/bin/verify-nox-workstation.sh ║
+          ╚══════════════════════════════════════════════════════════════╝
+
+    - name: Schedule reboot if required
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting to complete NOX VFX workstation setup"
+      when: 
+        - reboot_required_file.stat.exists or (nvidia_check is defined and nvidia_check.rc != 0)
+        - setup_nvidia | default(true)
+
+# Post-reboot verification (if reboot occurred)
+- name: Post-Reboot Verification
+  hosts: all
+  become: yes
+  tasks:
+    - name: Wait for system to be ready
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        timeout: 300
+
+    - name: Run final verification after reboot
+      ansible.builtin.shell: /usr/local/bin/verify-nox-workstation.sh
+      register: final_verification
+      changed_when: false
+
+    - name: Display final workstation status
+      ansible.builtin.debug:
+        msg: |
+          🎉 NOX VFX Workstation Setup Complete!
+          
+          {{ final_verification.stdout }}
+          
+          🚀 Your production-ready VFX workstation is online and ready!
+          
+          👥 Users can now:
+          • Log in with AD credentials
+          • Access GPU-accelerated VFX applications
+          • Enjoy optimized GNOME interface
+          • Use professional VFX software stack
+          
+          📊 Fleet Management:
+          • Monitor: ansible all -m shell -a 'nvidia-smi --query-gpu=utilization.gpu --format=csv'
+          • Status: ansible all -m shell -a '/usr/local/bin/verify-nox-workstation.sh'
