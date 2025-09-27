@@ -1,0 +1,57 @@
+---
+# NOX VFX Master Playbook - Complete Workstation Setup
+# Usage: ansible-playbook -i hosts.ini playbooks/main.yml
+
+- name: NOX VFX Complete Workstation Setup
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Display setup banner
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║                    NOX VFX Workstation Setup                 ║
+          ║                                                              ║
+          ║  This will configure your AlmaLinux workstation with:       ║
+          ║  • Domain join to ad.noxvfx.com                             ║
+          ║  • Complete software stack (browsers, editors, VFX tools)   ║
+          ║  • NOX company wallpaper and branding                       ║
+          ║  • GNOME dark theme and customization                       ║
+          ║                                                              ║
+          ║  Target: {{ inventory_hostname }}                            ║
+          ╚══════════════════════════════════════════════════════════════╝
+
+# Step 1: Domain Join
+- import_playbook: domain-join.yml
+
+# Step 2: Software Installation  
+- import_playbook: software-install.yml
+
+# Step 3: Wallpaper Setup
+- import_playbook: wallpaper.yml
+
+# Step 4: GNOME Configuration
+- import_playbook: gnome-config.yml
+
+# Final summary
+- name: NOX VFX Setup Complete
+  hosts: all
+  tasks:
+    - name: Display completion summary
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║                    🎉 SETUP COMPLETE! 🎉                     ║
+          ║                                                              ║
+          ║  Your NOX VFX workstation is now fully configured:          ║
+          ║  ✅ Domain: ad.noxvfx.com                                    ║
+          ║  ✅ Software: Chrome, Slack, VS Code, Sublime, Krita, etc.  ║
+          ║  ✅ Wallpaper: NOX branding applied                         ║
+          ║  ✅ GNOME: Dark theme, optimized for VFX work               ║
+          ║                                                              ║
+          ║  Users should log out and back in to see all changes.       ║
+          ║                                                              ║
+          ║  Verify with: sudo /usr/local/bin/verify-nox-software.sh    ║
+          ╚══════════════════════════════════════════════════════════════╝
