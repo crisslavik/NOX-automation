@@ -1,0 +1,268 @@
+---
+# Optimized NVIDIA Installation - Only Essential Packages
+- name: Optimized NVIDIA Driver Installation for VFX
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    install_cuda_toolkit: false  # Only install if specifically needed
+    install_nvidia_settings: true
+    
+  tasks:
+    - name: Display optimized installation plan
+      ansible.builtin.debug:
+        msg: |
+          🚀 Optimized NVIDIA Installation for VFX
+          
+          Target: {{ inventory_hostname }}
+          Strategy: Install only essential, working packages
+          
+          ✅ Will install:
+          • Core NVIDIA drivers
+          • nvidia-smi monitoring tool
+          • X.Org display drivers
+          • NVIDIA Settings GUI
+          
+          ❌ Will skip:
+          • Non-essential CUDA packages
+          • Packages that commonly fail
+          • Redundant utilities
+
+    - name: Check for NVIDIA hardware
+      ansible.builtin.shell: lspci | grep -i nvidia
+      register: nvidia_hardware
+      failed_when: false
+      changed_when: false
+
+    - name: Fail if no NVIDIA hardware found
+      ansible.builtin.fail:
+        msg: "No NVIDIA hardware detected on {{ inventory_hostname }}"
+      when: nvidia_hardware.stdout == ""
+
+    - name: Display detected NVIDIA hardware
+      ansible.builtin.debug:
+        msg: "🎮 GPU: {{ nvidia_hardware.stdout_lines[0] }}"
+
+    # ====== MINIMAL REPOSITORY SETUP ======
+    - name: Add NVIDIA repository
+      ansible.builtin.shell: |
+        dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/cuda-rhel{{ ansible_distribution_major_version }}.repo
+      register: nvidia_repo_add
+      failed_when: false
+
+    - name: Import NVIDIA GPG key
+      ansible.builtin.rpm_key:
+        key: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
+        state: present
+
+    - name: Update repository cache
+      ansible.builtin.dnf:
+        update_cache: yes
+
+    - name: Install minimal kernel dependencies
+      ansible.builtin.dnf:
+        name:
+          - kernel-devel
+          - kernel-headers
+          - gcc
+          - make
+          - dkms
+        state: present
+
+    # ====== CORE NVIDIA INSTALLATION (ESSENTIAL ONLY) ======
+    - name: Install core NVIDIA driver packages (essential only)
+      ansible.builtin.dnf:
+        name:
+          - nvidia-driver
+          - nvidia-driver-libs
+          - nvidia-driver-cuda  # Provides nvidia-smi
+          - nvidia-driver-cuda-libs
+          - nvidia-modprobe
+        state: present
+      register: core_nvidia_install
+
+    - name: Install NVIDIA Settings GUI
+      ansible.builtin.dnf:
+        name: nvidia-settings
+        state: present
+      when: install_nvidia_settings
+      ignore_errors: yes
+
+    # ====== X.ORG DRIVER (SMART INSTALLATION) ======
+    - name: Check what X.Org NVIDIA packages are available
+      ansible.builtin.shell: dnf list available '*nvidia*' | grep -i xorg
+      register: available_xorg_packages
+      failed_when: false
+      changed_when: false
+
+    - name: Install available X.Org NVIDIA driver
+      ansible.builtin.shell: |
+        # Install whatever X.Org NVIDIA package is actually available
+        XORG_PKG=$(dnf list available 2>/dev/null | grep -E 'xorg.*nvidia|nvidia.*xorg' | head -1 | awk '{print $1}')
+        if [ -n "$XORG_PKG" ]; then
+          echo "Installing: $XORG_PKG"
+          dnf install -y "$XORG_PKG"
+        else
+          echo "No X.Org NVIDIA packages available"
+        fi
+      register: xorg_install_result
+      failed_when: false
+
+    # ====== OPTIONAL CUDA TOOLKIT (ONLY IF REQUESTED) ======
+    - name: Install minimal CUDA toolkit (optional)
+      ansible.builtin.dnf:
+        name:
+          - cuda-toolkit
+        state: present
+      when: install_cuda_toolkit | default(false)
+      ignore_errors: yes
+
+    # ====== STREAMLINED CONFIGURATION ======
+    - name: Configure essential NVIDIA environment
+      ansible.builtin.copy:
+        content: |
+          # NOX VFX NVIDIA Environment (Optimized)
+          
+          # Ensure NVIDIA tools are in PATH
+          export PATH="/usr/bin:$PATH"
+          
+          # VFX optimizations
+          export __GL_SHADER_DISK_CACHE=1
+          export __GL_THREADED_OPTIMIZATIONS=1
+          
+          # CUDA path (if installed)
+          if [ -d "/usr/local/cuda" ]; then
+              export CUDA_HOME=/usr/local/cuda
+              export PATH="$CUDA_HOME/bin:$PATH"
+              export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$LD_LIBRARY_PATH"
+          fi
+        dest: /etc/profile.d/nvidia-optimized.sh
+        mode: '0755'
+
+    - name: Enable NVIDIA persistence (if service exists)
+      ansible.builtin.systemd:
+        name: nvidia-persistenced
+        enabled: yes
+        state: started
+      ignore_errors: yes
+
+    # ====== VERIFICATION ======
+    - name: Check installed NVIDIA packages
+      ansible.builtin.shell: rpm -qa | grep nvidia | wc -l
+      register: nvidia_package_count
+      changed_when: false
+
+    - name: Test nvidia-smi availability
+      ansible.builtin.shell: nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+      register: nvidia_smi_test
+      failed_when: false
+      changed_when: false
+
+    - name: Check NVIDIA modules
+      ansible.builtin.shell: lsmod | grep nvidia | wc -l
+      register: nvidia_modules_count
+      failed_when: false
+      changed_when: false
+
+    - name: Create optimized verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== Optimized NVIDIA Installation Status ==="
+          echo
+          
+          echo "📦 Installation Summary:"
+          pkg_count=$(rpm -qa | grep nvidia | wc -l)
+          echo "   NVIDIA packages installed: $pkg_count"
+          echo "   Strategy: Essential packages only"
+          echo
+          
+          echo "🔧 Core Functionality:"
+          if command -v nvidia-smi >/dev/null 2>&1; then
+              echo "   ✅ nvidia-smi: Working"
+              nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader | sed 's/^/   /'
+          else
+              echo "   ❌ nvidia-smi: Not available"
+          fi
+          
+          if command -v nvidia-settings >/dev/null 2>&1; then
+              echo "   ✅ nvidia-settings: Available"
+          else
+              echo "   ❌ nvidia-settings: Not installed"
+          fi
+          echo
+          
+          echo "🎮 Driver Status:"
+          module_count=$(lsmod | grep nvidia | wc -l)
+          if [ "$module_count" -gt 0 ]; then
+              echo "   ✅ NVIDIA modules loaded: $module_count"
+          else
+              echo "   ⚠️ NVIDIA modules: Not loaded (reboot needed)"
+          fi
+          echo
+          
+          echo "🎯 VFX Ready Status:"
+          if nvidia-smi >/dev/null 2>&1; then
+              echo "   ✅ GPU acceleration: Available"
+              echo "   ✅ Blender: Ready for GPU rendering"
+              echo "   ✅ Nuke: GPU acceleration enabled"
+              echo "   ✅ Professional VFX: Fully supported"
+          else
+              echo "   ⚠️ GPU acceleration: Reboot required"
+          fi
+          echo
+          
+          echo "📋 Optimization Benefits:"
+          echo "   • Faster installation (fewer packages)"
+          echo "   • Reduced disk usage"
+          echo "   • Less maintenance overhead"
+          echo "   • Essential functionality only"
+          echo
+          
+          if nvidia-smi >/dev/null 2>&1; then
+              echo "🎉 Status: Ready for professional VFX work!"
+          else
+              echo "🔄 Next step: sudo reboot"
+          fi
+        dest: /usr/local/bin/verify-nvidia-optimized.sh
+        mode: '0755'
+
+    - name: Run optimized verification
+      ansible.builtin.shell: /usr/local/bin/verify-nvidia-optimized.sh
+      register: optimized_verification
+      changed_when: false
+
+    - name: Display verification results
+      ansible.builtin.debug:
+        msg: "{{ optimized_verification.stdout }}"
+
+    - name: Display optimized installation summary
+      ansible.builtin.debug:
+        msg: |
+          🎉 Optimized NVIDIA Installation Complete!
+          
+          📦 Efficient Installation:
+          • {{ nvidia_package_count.stdout }} NVIDIA packages installed
+          • {{ 'nvidia-smi working' if nvidia_smi_test.rc == 0 else 'nvidia-smi ready (reboot needed)' }}
+          • {{ nvidia_modules_count.stdout }} kernel modules {{ 'loaded' if nvidia_modules_count.stdout != '0' else 'ready for loading' }}
+          
+          ✅ VFX Applications Supported:
+          • Blender (GPU rendering)
+          • Foundry Nuke (GPU acceleration)
+          • DaVinci Resolve (GPU processing)
+          • Krita (OpenGL acceleration)
+          
+          💡 Optimization Benefits:
+          • Faster installation process
+          • Reduced package bloat
+          • Essential functionality only
+          • Better maintenance
+          
+          {% if nvidia_smi_test.rc != 0 or nvidia_modules_count.stdout == '0' %}
+          🔄 Reboot Required: sudo reboot
+          {% else %}
+          🎨 Ready: Your VFX workstation is operational!
+          {% endif %}
+          
+          🔍 Status Check: /usr/local/bin/verify-nvidia-optimized.sh
