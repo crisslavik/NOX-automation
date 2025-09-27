@@ -1,0 +1,58 @@
+---
+# Install Brave Browser from RPM
+- name: Install Brave Browser
+  hosts: all
+  become: yes
+  vars:
+    brave_rpm_file: "browsers/brave-browser-stable-1.x.x.rpm"
+    
+  tasks:
+    - name: Check if Brave RPM exists
+      ansible.builtin.stat:
+        path: "{{ brave_rpm_file }}"
+      register: brave_rpm_check
+      delegate_to: localhost
+      become: no
+
+    - name: Display Brave download notice if RPM missing
+      ansible.builtin.debug:
+        msg: |
+          ⚠️  Brave RPM not found at {{ brave_rpm_file }}
+          
+          To download Brave Browser:
+          1. Visit: https://brave.com/download/
+          2. Download the .rpm version for Linux
+          3. Save as: files/{{ brave_rpm_file }}
+          4. Re-run this playbook
+      when: not brave_rpm_check.stat.exists
+
+    - name: Skip Brave installation if RPM not available
+      ansible.builtin.meta: end_host
+      when: not brave_rpm_check.stat.exists
+
+    - name: Copy Brave RPM to target machine
+      ansible.builtin.copy:
+        src: "{{ brave_rpm_file }}"
+        dest: "/tmp/brave-browser.rpm"
+        mode: '0644'
+
+    - name: Install Brave Browser from RPM
+      ansible.builtin.dnf:
+        name: "/tmp/brave-browser.rpm"
+        state: present
+        disable_gpg_check: yes
+      register: brave_install
+
+    - name: Verify Brave installation
+      ansible.builtin.command: brave-browser --version
+      register: brave_version
+      changed_when: false
+
+    - name: Display Brave version
+      ansible.builtin.debug:
+        msg: "✅ Brave Browser installed: {{ brave_version.stdout }}"
+
+    - name: Clean up temporary RPM file
+      ansible.builtin.file:
+        path: "/tmp/brave-browser.rpm"
+        state: absent
