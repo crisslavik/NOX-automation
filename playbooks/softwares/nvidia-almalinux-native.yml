@@ -1,7 +1,6 @@
 ---
-# Install NVIDIA using AlmaLinux Native Support
-# Based on: https://almalinux.org/blog/2025-08-06-announcing-native-nvidia-suport/
-- name: Install NVIDIA using AlmaLinux Native Support
+# Robust NVIDIA Installation for AlmaLinux
+- name: Robust NVIDIA Driver Installation
   hosts: all
   become: yes
   gather_facts: yes
@@ -11,86 +10,64 @@
     install_nvidia_settings: true
     
   tasks:
-    - name: Display AlmaLinux native NVIDIA installation plan
-      ansible.builtin.debug:
-        msg: |
-          🚀 AlmaLinux Native NVIDIA Installation
-          
-          Target: {{ inventory_hostname }}
-          AlmaLinux Version: {{ ansible_distribution_version }}
-          
-          📦 Using AlmaLinux's native NVIDIA support
-          🔗 Reference: https://almalinux.org/blog/2025-08-06-announcing-native-nvidia-suport/
-          
-          ✅ Benefits:
-          • Officially supported by AlmaLinux
-          • Better integration with system updates
-          • Simplified installation process
-          • Enterprise-grade stability
-
-    - name: Check for NVIDIA GPU hardware
+    - name: Check for NVIDIA hardware
       ansible.builtin.shell: lspci | grep -i nvidia
       register: nvidia_hardware
       failed_when: false
       changed_when: false
 
-    - name: Display detected NVIDIA hardware
-      ansible.builtin.debug:
-        msg: |
-          🎮 NVIDIA Hardware:
-          {{ nvidia_hardware.stdout_lines | join('\n') if nvidia_hardware.stdout_lines else '❌ No NVIDIA hardware detected' }}
-
     - name: Fail if no NVIDIA hardware found
       ansible.builtin.fail:
-        msg: |
-          ❌ No NVIDIA hardware detected on {{ inventory_hostname }}
-          
-          Please verify:
-          1. NVIDIA GPU is properly installed
-          2. BIOS settings enable discrete graphics
-          3. 'lspci | grep -i vga' shows graphics hardware
+        msg: "No NVIDIA hardware detected"
       when: nvidia_hardware.stdout == ""
 
-    # ====== ALMALINUX NVIDIA REPOSITORY SETUP ======
-    - name: Add NVIDIA repository for AlmaLinux
-      ansible.builtin.yum_repository:
-        name: nvidia-driver
-        description: NVIDIA Driver Repository for AlmaLinux
-        baseurl: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/"
-        gpgkey: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
-        gpgcheck: yes
-        enabled: yes
+    - name: Display detected NVIDIA hardware
+      ansible.builtin.debug:
+        msg: "Found NVIDIA hardware: {{ nvidia_hardware.stdout }}"
+
+    # ====== REPOSITORY SETUP (MULTIPLE METHODS) ======
+    - name: Install EPEL repository
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+
+    - name: Enable CRB repository for AlmaLinux 9
+      ansible.builtin.shell: dnf config-manager --set-enabled crb
+      when: ansible_distribution_major_version == "9"
+      ignore_errors: yes
+
+    - name: Enable PowerTools repository for AlmaLinux 8
+      ansible.builtin.shell: dnf config-manager --set-enabled powertools
+      when: ansible_distribution_major_version == "8"
+      ignore_errors: yes
+
+    - name: Remove any existing NVIDIA repositories (clean slate)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/yum.repos.d/cuda-rhel8.repo
+        - /etc/yum.repos.d/cuda-rhel9.repo
+        - /etc/yum.repos.d/nvidia-driver.repo
+        - /etc/yum.repos.d/nvidia-cuda.repo
+      ignore_errors: yes
+
+    - name: Add NVIDIA CUDA repository using config-manager
+      ansible.builtin.shell: |
+        dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/cuda-rhel{{ ansible_distribution_major_version }}.repo
+      register: cuda_repo_add
+      failed_when: false
 
     - name: Import NVIDIA GPG key
       ansible.builtin.rpm_key:
         key: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
         state: present
 
-    - name: Update repository cache after adding NVIDIA repo
+    - name: Update repository cache
       ansible.builtin.dnf:
         update_cache: yes
 
-    # ====== ALMALINUX NATIVE NVIDIA INSTALLATION ======
-    - name: Update system packages
-      ansible.builtin.dnf:
-        name: "*"
-        state: latest
-
-    - name: Install EPEL repository (may be required for dependencies)
-      ansible.builtin.dnf:
-        name: epel-release
-        state: present
-
-    - name: Enable PowerTools/CRB repository for AlmaLinux 9
-      ansible.builtin.shell: dnf config-manager --set-enabled crb
-      when: ansible_distribution_major_version == "9"
-      ignore_errors: yes
-
-    - name: Enable PowerTools repository for AlmaLinux 8  
-      ansible.builtin.shell: dnf config-manager --set-enabled powertools
-      when: ansible_distribution_major_version == "8"
-      ignore_errors: yes
-
+    # ====== KERNEL PACKAGES ======
     - name: Install kernel development packages
       ansible.builtin.dnf:
         name:
@@ -99,169 +76,180 @@
           - gcc
           - make
           - dkms
+          - elfutils-libelf-devel
         state: present
 
-    # Using AlmaLinux's native approach
-    - name: Install NVIDIA driver using AlmaLinux optimized method
+    # ====== NVIDIA INSTALLATION (PROGRESSIVE APPROACH) ======
+    - name: Try Method 1 - Install specific NVIDIA packages
+      ansible.builtin.dnf:
+        name:
+          - nvidia-driver:latest-dkms
+          - nvidia-driver-libs
+          - nvidia-driver-cuda
+          - nvidia-driver-cuda-libs
+        state: present
+      register: nvidia_method1
+      ignore_errors: yes
+
+    - name: Try Method 2 - Install NVIDIA drivers without specific versions
       ansible.builtin.dnf:
         name:
           - nvidia-driver
           - nvidia-driver-libs
-          - nvidia-driver-cuda
-          - nvidia-driver-cuda-libs
-          - nvidia-modprobe
-          - nvidia-persistenced
+        state: present
+      register: nvidia_method2
+      ignore_errors: yes
+      when: nvidia_method1 is failed
+
+    - name: Try Method 3 - Install using cuda-drivers meta-package
+      ansible.builtin.dnf:
+        name:
+          - cuda-drivers
+        state: present
+      register: nvidia_method3
+      ignore_errors: yes
+      when: nvidia_method1 is failed and nvidia_method2 is failed
+
+    - name: Try Method 4 - Install basic NVIDIA packages available
+      ansible.builtin.shell: |
+        # Find what NVIDIA packages are actually available
+        AVAILABLE_PACKAGES=$(dnf list available 2>/dev/null | grep -E '^nvidia-driver|^kmod-nvidia|^akmod-nvidia' | awk '{print $1}' | head -5)
+        if [ -n "$AVAILABLE_PACKAGES" ]; then
+          echo "Installing: $AVAILABLE_PACKAGES"
+          dnf install -y $AVAILABLE_PACKAGES
+        else
+          echo "No NVIDIA driver packages found"
+          exit 1
+        fi
+      register: nvidia_method4
+      ignore_errors: yes
+      when: nvidia_method1 is failed and nvidia_method2 is failed and nvidia_method3 is failed
+
+    - name: Check which method succeeded
+      ansible.builtin.set_fact:
+        nvidia_install_method: >-
+          {% if nvidia_method1 is not failed -%}
+          Method 1 (specific packages)
+          {%- elif nvidia_method2 is not failed -%}
+          Method 2 (basic packages)
+          {%- elif nvidia_method3 is not failed -%}
+          Method 3 (cuda-drivers)
+          {%- elif nvidia_method4 is not failed -%}
+          Method 4 (available packages)
+          {%- else -%}
+          None - All methods failed
+          {%- endif %}
+
+    - name: Display installation method used
+      ansible.builtin.debug:
+        msg: "NVIDIA installation: {{ nvidia_install_method }}"
+
+    - name: Fail if all installation methods failed
+      ansible.builtin.fail:
+        msg: |
+          All NVIDIA installation methods failed. 
+          Please check:
+          1. NVIDIA repository is accessible
+          2. Package names are correct for your AlmaLinux version
+          3. Hardware is supported
+      when: nvidia_method1 is failed and nvidia_method2 is failed and nvidia_method3 is failed and nvidia_method4 is failed
+
+    # ====== X.ORG DRIVER (SEPARATE ATTEMPT) ======
+    - name: Try to install X.Org NVIDIA driver
+      ansible.builtin.dnf:
+        name:
           - xorg-x11-drv-nvidia
           - nvidia-libXNVCtrl
         state: present
-      register: nvidia_install
+      register: xorg_nvidia_install
+      ignore_errors: yes
 
-    - name: Install NVIDIA Settings
+    - name: Try alternative X.Org driver packages
+      ansible.builtin.shell: |
+        # Look for any xorg nvidia packages
+        XORG_PACKAGES=$(dnf list available 2>/dev/null | grep -E 'xorg.*nvidia|nvidia.*xorg' | awk '{print $1}')
+        if [ -n "$XORG_PACKAGES" ]; then
+          echo "Installing X.Org packages: $XORG_PACKAGES"
+          dnf install -y $XORG_PACKAGES
+        else
+          echo "No X.Org NVIDIA packages found"
+        fi
+      register: xorg_alternative
+      ignore_errors: yes
+      when: xorg_nvidia_install is failed
+
+    # ====== NVIDIA SETTINGS ======
+    - name: Install NVIDIA Settings (if available)
       ansible.builtin.dnf:
         name: nvidia-settings
         state: present
       when: install_nvidia_settings
+      ignore_errors: yes
 
     # ====== CUDA INSTALLATION ======
-    - name: Add CUDA repository for AlmaLinux
-      ansible.builtin.yum_repository:
-        name: nvidia-cuda
-        description: NVIDIA CUDA Repository for AlmaLinux
-        baseurl: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/"
-        gpgkey: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
-        gpgcheck: yes
-        enabled: yes
-      when: install_cuda
-
-    - name: Install CUDA packages using optimized method
+    - name: Install CUDA toolkit
       ansible.builtin.dnf:
         name:
           - cuda-toolkit
           - cuda-runtime
-          - cuda-drivers
         state: present
       when: install_cuda
       register: cuda_install
+      ignore_errors: yes
 
-    # ====== POST-INSTALLATION CONFIGURATION ======
-    - name: Configure NVIDIA persistence daemon
+    # ====== POST-INSTALLATION ======
+    - name: Configure NVIDIA environment
+      ansible.builtin.copy:
+        content: |
+          # NVIDIA Environment Configuration
+          export CUDA_HOME=/usr/local/cuda
+          export PATH=$CUDA_HOME/bin:$PATH
+          export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+        dest: /etc/profile.d/nvidia.sh
+        mode: '0755'
+
+    - name: Enable nvidia-persistenced service
       ansible.builtin.systemd:
         name: nvidia-persistenced
         enabled: yes
         state: started
       ignore_errors: yes
 
-    - name: Configure CUDA environment
-      ansible.builtin.copy:
-        content: |
-          # AlmaLinux Native NVIDIA/CUDA Environment
-          export CUDA_HOME=/usr/local/cuda
-          export PATH=$CUDA_HOME/bin:$PATH
-          export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          
-          # VFX optimizations
-          export __GL_SHADER_DISK_CACHE=1
-          export __GL_THREADED_OPTIMIZATIONS=1
-        dest: /etc/profile.d/nvidia-almalinux.sh
-        mode: '0755'
-      when: install_cuda
+    # ====== VERIFICATION ======
+    - name: Check what NVIDIA packages were actually installed
+      ansible.builtin.shell: rpm -qa | grep -i nvidia
+      register: installed_nvidia_packages
+      changed_when: false
 
-    - name: Create NOX VFX NVIDIA optimizations
-      ansible.builtin.copy:
-        content: |
-          #!/bin/bash
-          # NOX VFX NVIDIA Optimizations for AlmaLinux Native Installation
-          
-          echo "🎮 Applying NVIDIA optimizations for VFX workstation..."
-          
-          # GPU performance mode
-          if command -v nvidia-settings >/dev/null 2>&1; then
-              # Maximum performance mode
-              nvidia-settings -a '[gpu:0]/GpuPowerMizerMode=1' 2>/dev/null || true
-              echo "✅ GPU set to maximum performance mode"
-              
-              # Memory and clock optimizations (conservative)
-              nvidia-settings -a '[gpu:0]/GPUMemoryTransferRateOffset[3]=500' 2>/dev/null || true
-              nvidia-settings -a '[gpu:0]/GPUGraphicsClockOffset[3]=50' 2>/dev/null || true
-              echo "✅ Memory and clock optimizations applied"
-          fi
-          
-          # System optimizations
-          echo "⚡ System optimizations:"
-          echo "• GPU persistence daemon enabled"
-          echo "• CUDA environment configured"
-          echo "• X.Org NVIDIA driver loaded"
-          
-          echo "🎨 VFX Applications Ready:"
-          echo "• Blender: CUDA rendering available"
-          echo "• Krita: OpenGL acceleration enabled"
-          echo "• Video editing: Hardware acceleration ready"
-        dest: /usr/local/bin/nox-nvidia-optimize.sh
-        mode: '0755'
+    - name: Display installed NVIDIA packages
+      ansible.builtin.debug:
+        msg: "Installed NVIDIA packages: {{ installed_nvidia_packages.stdout_lines }}"
 
-    - name: Create verification script
-      ansible.builtin.copy:
-        content: |
-          #!/bin/bash
-          echo "=== AlmaLinux Native NVIDIA Verification ==="
-          echo
-          
-          echo "🎮 NVIDIA Driver (AlmaLinux Native):"
-          if command -v nvidia-smi >/dev/null 2>&1; then
-              echo "✅ NVIDIA driver active"
-              nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
-              echo
-              echo "💾 Memory:"
-              nvidia-smi --query-gpu=memory.used,memory.total --format=csv
-          else
-              echo "❌ NVIDIA driver not active (reboot required)"
-          fi
-          echo
-          
-          {% if install_cuda %}
-          echo "🔧 CUDA (AlmaLinux Native):"
-          if command -v nvcc >/dev/null 2>&1; then
-              echo "✅ CUDA available"
-              nvcc --version | grep "release"
-          else
-              echo "❌ CUDA not available"
-          fi
-          echo
-          {% endif %}
-          
-          echo "📦 Installation Method: AlmaLinux Native Support"
-          echo "🔗 Reference: https://almalinux.org/blog/2025-08-06-announcing-native-nvidia-suport/"
-          echo
-          echo "🎨 VFX Ready: All NVIDIA-accelerated applications should work"
-        dest: /usr/local/bin/verify-almalinux-nvidia.sh
-        mode: '0755'
-
-    - name: Check current NVIDIA status
+    - name: Test nvidia-smi command
       ansible.builtin.shell: nvidia-smi
-      register: nvidia_status
+      register: nvidia_smi_test
       failed_when: false
       changed_when: false
 
     - name: Display installation summary
       ansible.builtin.debug:
         msg: |
-          🎉 AlmaLinux Native NVIDIA Installation Complete!
+          NVIDIA Installation Summary:
           
-          📦 Installation Method: AlmaLinux Optimized (with NVIDIA repositories)
-          🔗 Based on: https://almalinux.org/blog/2025-08-06-announcing-native-nvidia-suport/
+          Installation Method: {{ nvidia_install_method }}
+          Packages Installed: {{ installed_nvidia_packages.stdout_lines | length }} NVIDIA packages
           
-          ✅ Installed Components:
-          • NVIDIA Driver (optimized for AlmaLinux)
-          {% if install_cuda %}• CUDA Toolkit (optimized packages){% endif %}
-          {% if install_nvidia_settings %}• NVIDIA Settings GUI{% endif %}
-          
-          {% if nvidia_status.rc == 0 %}
-          🎮 NVIDIA Status: Driver active and working
+          {% if nvidia_smi_test.rc == 0 %}
+          ✅ nvidia-smi working: Driver loaded successfully
           {% else %}
-          🔄 NVIDIA Status: Reboot required to activate driver
+          ⚠️ nvidia-smi not working: {{ nvidia_smi_test.stderr | default('Reboot may be required') }}
           {% endif %}
           
-          🔍 Verification: sudo /usr/local/bin/verify-almalinux-nvidia.sh
-          ⚡ Optimization: sudo /usr/local/bin/nox-nvidia-optimize.sh
-          
-          🎨 Your VFX workstation is ready for GPU-accelerated work!
+          Next Steps:
+          {% if nvidia_smi_test.rc != 0 %}
+          1. Reboot the system to load NVIDIA drivers
+          2. Run 'nvidia-smi' to verify installation
+          {% else %}
+          1. NVIDIA drivers are working!
+          2. Test GPU acceleration in applications
+          {% endif %}
