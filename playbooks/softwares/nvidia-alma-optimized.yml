@@ -266,3 +266,53 @@
           {% endif %}
           
           🔍 Status Check: /usr/local/bin/verify-nvidia-optimized.sh
+
+    # ====== REBOOT HANDLING ======
+    - name: Determine if reboot is needed
+      ansible.builtin.set_fact:
+        nvidia_reboot_needed: "{{ nvidia_smi_test.rc != 0 or nvidia_modules_count.stdout == '0' }}"
+
+    - name: Prompt for immediate reboot
+      ansible.builtin.pause:
+        prompt: |
+          
+          NVIDIA drivers installed successfully but require reboot to activate.
+          
+          Reboot {{ inventory_hostname }} now to complete setup? (y/N)
+        seconds: 1
+      register: reboot_prompt
+      when: 
+        - nvidia_reboot_needed
+        - ansible_connection != 'local'
+        - not ansible_check_mode
+
+    - name: Reboot system to activate NVIDIA drivers
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting to activate NVIDIA drivers for VFX workstation"
+        post_reboot_delay: 30
+      when: 
+        - nvidia_reboot_needed
+        - reboot_prompt is defined
+        - reboot_prompt.user_input | default('n') | lower in ['y', 'yes']
+
+    - name: Verify NVIDIA after reboot
+      ansible.builtin.shell: /usr/local/bin/verify-nvidia-optimized.sh
+      register: post_reboot_verification
+      changed_when: false
+      when: 
+        - nvidia_reboot_needed
+        - reboot_prompt is defined
+        - reboot_prompt.user_input | default('n') | lower in ['y', 'yes']
+
+    - name: Display post-reboot status
+      ansible.builtin.debug:
+        msg: |
+          🎉 Post-Reboot NVIDIA Verification:
+          
+          {{ post_reboot_verification.stdout if post_reboot_verification is defined and post_reboot_verification.stdout is defined else 'NVIDIA installation complete - reboot manually when ready' }}
+          
+          {% if post_reboot_verification is defined and post_reboot_verification.stdout is defined %}
+          🎨 Your VFX workstation is now fully operational with GPU acceleration!
+          {% endif %}
+      when: post_reboot_verification is defined or not nvidia_reboot_needed
