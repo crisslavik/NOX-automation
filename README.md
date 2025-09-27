@@ -4,7 +4,7 @@ cd NOX-automation/
 chmod +x *.sh
 
 # SPREAD THE SSH KEYS
-./download-rpms.sh
+./deploy_ssh_keys.sh
 
 # Download RPMs (creates files/rpms/ structure)
 ./download-rpms.sh
