@@ -1,0 +1,383 @@
+---
+# Install Foundry Nuke 16 from RPM
+- name: Install Foundry Nuke 16
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    nuke_rpm_file: "vfx-professional/foundry-nuke-16.0v1.rpm"
+    nuke_version: "16.0v1"
+    create_desktop_entry: true
+    configure_environment: true
+    
+  tasks:
+    - name: Display Foundry Nuke installation plan
+      ansible.builtin.debug:
+        msg: |
+          🎬 Foundry Nuke 16 Installation
+          
+          Target: {{ inventory_hostname }}
+          Version: {{ nuke_version }}
+          
+          📦 Installation from RPM: {{ nuke_rpm_file }}
+          🔧 Desktop integration: {{ 'Yes' if create_desktop_entry else 'No' }}
+          ⚙️ Environment setup: {{ 'Yes' if configure_environment else 'No' }}
+          
+          ⚠️ Note: License configuration will be handled separately
+          💾 System requirements: NVIDIA GPU, 16GB+ RAM recommended
+
+    - name: Check for NVIDIA GPU (recommended for Nuke)
+      ansible.builtin.shell: lspci | grep -i nvidia
+      register: nvidia_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display GPU status
+      ansible.builtin.debug:
+        msg: "{{ 'GPU detected: ' + nvidia_check.stdout if nvidia_check.stdout else 'No NVIDIA GPU detected - performance may be limited' }}"
+
+    - name: Check available system memory
+      ansible.builtin.debug:
+        msg: "System RAM: {{ (ansible_memtotal_mb / 1024) | round(1) }}GB {{ '(✅ Sufficient)' if ansible_memtotal_mb > 16384 else '(⚠️ May need more RAM)' }}"
+
+    - name: Check if Foundry Nuke RPM exists
+      ansible.builtin.stat:
+        path: "{{ nuke_rpm_file }}"
+      register: nuke_rpm_check
+      delegate_to: localhost
+      become: no
+
+    - name: Display RPM download notice if missing
+      ansible.builtin.debug:
+        msg: |
+          ⚠️ Foundry Nuke RPM not found at {{ nuke_rpm_file }}
+          
+          To obtain Foundry Nuke 16:
+          1. Log into your Foundry account at https://www.foundry.com/
+          2. Go to Downloads section
+          3. Download "Nuke 16.0v1 Linux (RPM)" 
+          4. Save as: files/{{ nuke_rpm_file }}
+          5. Ensure you have valid licensing
+          
+          Note: This is commercial software requiring proper licensing.
+      when: not nuke_rpm_check.stat.exists
+
+    - name: Skip installation if RPM not available
+      ansible.builtin.meta: end_host
+      when: not nuke_rpm_check.stat.exists
+
+    # ====== DEPENDENCIES AND PREREQUISITES ======
+    - name: Install required system packages for Nuke
+      ansible.builtin.dnf:
+        name:
+          - libXcomposite
+          - libXcursor
+          - libXdamage
+          - libXext
+          - libXfixes
+          - libXft
+          - libXi
+          - libXinerama
+          - libXrandr
+          - libXrender
+          - libXss
+          - libXt
+          - libXtst
+          - libXxf86vm
+          - mesa-libGL
+          - mesa-libGLU
+          - libpng12
+          - libtiff
+          - openssl-libs
+          - zlib
+          # Audio libraries
+          - alsa-lib
+          - pulseaudio-libs
+          # Font libraries
+          - fontconfig
+          - freetype
+          - libXft
+        state: present
+      ignore_errors: yes
+
+    - name: Install additional libraries that Nuke may need
+      ansible.builtin.dnf:
+        name:
+          - tcsh  # Some Nuke scripts use tcsh
+          - glibc.i686  # 32-bit compatibility
+        state: present
+      ignore_errors: yes
+
+    # ====== NUKE INSTALLATION ======
+    - name: Copy Foundry Nuke RPM to target machine
+      ansible.builtin.copy:
+        src: "{{ nuke_rpm_file }}"
+        dest: "/tmp/foundry-nuke.rpm"
+        mode: '0644'
+
+    - name: Install Foundry Nuke from RPM
+      ansible.builtin.dnf:
+        name: "/tmp/foundry-nuke.rpm"
+        state: present
+        disable_gpg_check: yes
+      register: nuke_install
+
+    - name: Display installation result
+      ansible.builtin.debug:
+        msg: "{{ 'Foundry Nuke installed successfully' if nuke_install.changed else 'Foundry Nuke was already installed or installation failed' }}"
+
+    # ====== POST-INSTALLATION CONFIGURATION ======
+    - name: Find Nuke installation directory
+      ansible.builtin.find:
+        paths: 
+          - /opt/foundry
+          - /usr/local/foundry
+          - /opt
+        patterns: "*nuke*"
+        file_type: directory
+      register: nuke_install_dirs
+
+    - name: Set Nuke installation path
+      ansible.builtin.set_fact:
+        nuke_install_path: "{{ nuke_install_dirs.files[0].path if nuke_install_dirs.files else '/opt/foundry/nuke16.0v1' }}"
+
+    - name: Display Nuke installation path
+      ansible.builtin.debug:
+        msg: "Nuke installation directory: {{ nuke_install_path }}"
+
+    - name: Configure Nuke environment variables
+      ansible.builtin.copy:
+        content: |
+          # Foundry Nuke 16 Environment Configuration
+          
+          # Nuke installation path
+          export FOUNDRY_NUKE_PATH="{{ nuke_install_path }}"
+          export PATH="$FOUNDRY_NUKE_PATH:$PATH"
+          
+          # Nuke licensing (floating license configuration)
+          export NUKE_LICENSE=5053@license
+          
+          # Alternative licensing variables (if needed)
+          # export foundry_LICENSE=5053@license
+          
+          # Nuke performance optimizations
+          export NUKE_USE_THREADED_RESOLVE=1
+          export NUKE_DISK_CACHE_GB=8
+          
+          # CUDA/OpenCL support for GPU acceleration
+          export NUKE_USE_GPU=1
+          
+          # Python path for Nuke scripts
+          export PYTHONPATH="$FOUNDRY_NUKE_PATH/plugins:$PYTHONPATH"
+          
+          # Temporary directory for Nuke
+          export NUKE_TEMP_DIR=/tmp/nuke_temp
+          mkdir -p $NUKE_TEMP_DIR 2>/dev/null
+        dest: /etc/profile.d/foundry-nuke.sh
+        mode: '0755'
+      when: configure_environment
+
+    - name: Create Nuke temporary directory
+      ansible.builtin.file:
+        path: /tmp/nuke_temp
+        state: directory
+        mode: '1777'  # Sticky bit for shared temp directory
+
+    - name: Create desktop entry for Nuke
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Name=Foundry Nuke 16
+          Comment=Professional VFX Compositing Software
+          Exec={{ nuke_install_path }}/Nuke16.0 --nukex
+          Icon={{ nuke_install_path }}/plugins/icons/NukeIcon.png
+          Terminal=false
+          Type=Application
+          Categories=Graphics;Video;AudioVideo;
+          StartupNotify=true
+          MimeType=application/x-nuke;
+        dest: /usr/share/applications/foundry-nuke16.desktop
+        mode: '0644'
+      when: create_desktop_entry
+      ignore_errors: yes
+
+    - name: Create NukeX desktop entry
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Name=Foundry NukeX 16
+          Comment=Professional VFX Compositing Software (Extended)
+          Exec={{ nuke_install_path }}/Nuke16.0 --nukex
+          Icon={{ nuke_install_path }}/plugins/icons/NukeIcon.png
+          Terminal=false
+          Type=Application
+          Categories=Graphics;Video;AudioVideo;
+          StartupNotify=true
+        dest: /usr/share/applications/foundry-nukex16.desktop
+        mode: '0644'
+      when: create_desktop_entry
+      ignore_errors: yes
+
+		- name: Create NukeStudio desktop entry
+			ansible.builtin.copy:
+				content: |
+					[Desktop Entry]
+					Name=Foundry NukeStudio 16
+					Comment=Professional VFX Editorial and Compositing Software
+					Exec={{ nuke_install_path }}/Nuke16.0 --studio
+					Icon={{ nuke_install_path }}/plugins/icons/NukeStudioIcon.png
+					Terminal=false
+					Type=Application
+					Categories=Graphics;Video;AudioVideo;
+					StartupNotify=true
+					MimeType=application/x-nukestudio;
+				dest: /usr/share/applications/foundry-nukestudio16.desktop
+				mode: '0644'
+			when: create_desktop_entry
+			ignore_errors: yes
+
+
+    # ====== LICENSING PREPARATION ======
+    - name: Create Nuke licensing configuration directory
+      ansible.builtin.file:
+        path: /opt/foundry/licensing
+        state: directory
+        mode: '0755'
+
+    - name: Create licensing configuration template
+      ansible.builtin.copy:
+        content: |
+          # Foundry Nuke Licensing Configuration Template
+          # 
+          # For floating licenses, set:
+          # export NUKE_LICENSE=5053@license
+          # 
+          # Current configuration:
+          export NUKE_LICENSE=5053@license
+        dest: /opt/foundry/licensing/nuke-license-template.sh
+        mode: '0644'
+
+    # ====== VERIFICATION ======
+    - name: Check if Nuke binary exists and is executable
+      ansible.builtin.stat:
+        path: "{{ nuke_install_path }}/Nuke16.0"
+      register: nuke_binary
+
+    - name: Create Nuke verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== Foundry Nuke 16 Verification ==="
+          echo
+          
+          echo "📦 Installation:"
+          if [ -f "{{ nuke_install_path }}/Nuke16.0" ]; then
+              echo "✅ Nuke binary found: {{ nuke_install_path }}/Nuke16.0"
+              echo "✅ Installation path: {{ nuke_install_path }}"
+              
+              # Check version
+              if "{{ nuke_install_path }}/Nuke16.0" --version 2>/dev/null; then
+                  echo "✅ Nuke version check successful"
+              else
+                  echo "⚠️ Nuke version check failed (may need license)"
+              fi
+          else
+              echo "❌ Nuke binary not found"
+          fi
+          echo
+          
+          echo "🔧 Environment:"
+          if [ -f "/etc/profile.d/foundry-nuke.sh" ]; then
+              echo "✅ Environment configuration: /etc/profile.d/foundry-nuke.sh"
+          else
+              echo "❌ Environment configuration missing"
+          fi
+          echo
+          
+          echo "🖥️ Desktop Integration:"
+          nuke_desktop="/usr/share/applications/foundry-nuke16.desktop"
+          nukex_desktop="/usr/share/applications/foundry-nukex16.desktop"
+          nukestudio_desktop="/usr/share/applications/foundry-nukestudio16.desktop"
+          
+          if [ -f "$nuke_desktop" ]; then
+              echo "✅ Nuke desktop entry created"
+          else
+              echo "❌ Nuke desktop entry missing"
+          fi
+          
+          if [ -f "$nukex_desktop" ]; then
+              echo "✅ NukeX desktop entry created"
+          else
+              echo "❌ NukeX desktop entry missing"
+          fi
+          
+          if [ -f "$nukestudio_desktop" ]; then
+              echo "✅ NukeStudio desktop entry created"
+          else
+              echo "❌ NukeStudio desktop entry missing"
+          fi
+          echo
+          
+          echo "📋 System Requirements:"
+          echo "RAM: $(free -h | awk '/^Mem:/ {print $2}') total"
+          echo "GPU: $(lspci | grep -i nvidia | head -1 || echo 'No NVIDIA GPU detected')"
+          echo "Disk space: $(df -h {{ nuke_install_path }} | tail -1 | awk '{print $4}') available"
+          echo
+          
+          echo "🔐 Licensing:"
+          echo "⚠️ License configuration needed"
+          echo "Template: /opt/foundry/licensing/nuke-license-template.sh"
+          echo "Set: export foundry_LICENSE=4101@your-license-server"
+          echo
+          
+          echo "🚀 Next Steps:"
+          echo "1. Configure floating license server"
+          echo "2. Test Nuke launch: {{ nuke_install_path }}/Nuke16.0"
+          echo "3. Verify GPU acceleration in Nuke preferences"
+        dest: /usr/local/bin/verify-foundry-nuke.sh
+        mode: '0755'
+
+    - name: Run Nuke verification
+      ansible.builtin.shell: /usr/local/bin/verify-foundry-nuke.sh
+      register: nuke_verification
+      changed_when: false
+
+    - name: Display verification results
+      ansible.builtin.debug:
+        msg: "{{ nuke_verification.stdout }}"
+
+    - name: Clean up temporary RPM file
+      ansible.builtin.file:
+        path: "/tmp/foundry-nuke.rpm"
+        state: absent
+
+    - name: Display installation completion
+      ansible.builtin.debug:
+        msg: |
+          🎬 Foundry Nuke 16 Installation Complete!
+          
+          ✅ Installed Components:
+          • Nuke 16.0v1 compositing software
+          • NukeX advanced compositing features
+          • NukeStudio editorial and review tools
+          • System dependencies and libraries
+          • Environment configuration
+          • Desktop integration (3 applications)
+          
+          🔐 License Configuration:
+          • License server: 5053@license
+          • Environment variable: NUKE_LICENSE=5053@license
+          • Ready for floating license setup
+          
+          🚀 Ready for Use:
+          • Binary: {{ nuke_install_path }}/Nuke16.0
+          • Verification: /usr/local/bin/verify-foundry-nuke.sh
+          • GPU acceleration available (if NVIDIA drivers installed)
+          
+          📋 Next Steps:
+          1. Verify license connectivity: telnet license 5053
+          2. Test Nuke: {{ nuke_install_path }}/Nuke16.0
+          3. Test NukeStudio: {{ nuke_install_path }}/Nuke16.0 --studio
+          4. Test NukeX: {{ nuke_install_path }}/Nuke16.0 --nukex
+          5. Verify GPU nodes are available in Nuke
