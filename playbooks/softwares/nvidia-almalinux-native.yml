@@ -51,6 +51,25 @@
           3. 'lspci | grep -i vga' shows graphics hardware
       when: nvidia_hardware.stdout == ""
 
+    # ====== ALMALINUX NVIDIA REPOSITORY SETUP ======
+    - name: Add NVIDIA repository for AlmaLinux
+      ansible.builtin.yum_repository:
+        name: nvidia-driver
+        description: NVIDIA Driver Repository for AlmaLinux
+        baseurl: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/"
+        gpgkey: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
+        gpgcheck: yes
+        enabled: yes
+
+    - name: Import NVIDIA GPG key
+      ansible.builtin.rpm_key:
+        key: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
+        state: present
+
+    - name: Update repository cache after adding NVIDIA repo
+      ansible.builtin.dnf:
+        update_cache: yes
+
     # ====== ALMALINUX NATIVE NVIDIA INSTALLATION ======
     - name: Update system packages
       ansible.builtin.dnf:
@@ -83,7 +102,7 @@
         state: present
 
     # Using AlmaLinux's native approach
-    - name: Install NVIDIA driver using AlmaLinux native method
+    - name: Install NVIDIA driver using AlmaLinux optimized method
       ansible.builtin.dnf:
         name:
           - nvidia-driver
@@ -104,12 +123,22 @@
       when: install_nvidia_settings
 
     # ====== CUDA INSTALLATION ======
-    - name: Install CUDA packages using native method
+    - name: Add CUDA repository for AlmaLinux
+      ansible.builtin.yum_repository:
+        name: nvidia-cuda
+        description: NVIDIA CUDA Repository for AlmaLinux
+        baseurl: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/"
+        gpgkey: "https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ ansible_distribution_major_version }}/x86_64/D42D0685.pub"
+        gpgcheck: yes
+        enabled: yes
+      when: install_cuda
+
+    - name: Install CUDA packages using optimized method
       ansible.builtin.dnf:
         name:
-          - cuda
           - cuda-toolkit
           - cuda-runtime
+          - cuda-drivers
         state: present
       when: install_cuda
       register: cuda_install
@@ -218,12 +247,12 @@
         msg: |
           🎉 AlmaLinux Native NVIDIA Installation Complete!
           
-          📦 Installation Method: AlmaLinux Native Support
+          📦 Installation Method: AlmaLinux Optimized (with NVIDIA repositories)
           🔗 Based on: https://almalinux.org/blog/2025-08-06-announcing-native-nvidia-suport/
           
           ✅ Installed Components:
-          • NVIDIA Driver (native AlmaLinux packages)
-          {% if install_cuda %}• CUDA Toolkit (native packages){% endif %}
+          • NVIDIA Driver (optimized for AlmaLinux)
+          {% if install_cuda %}• CUDA Toolkit (optimized packages){% endif %}
           {% if install_nvidia_settings %}• NVIDIA Settings GUI{% endif %}
           
           {% if nvidia_status.rc == 0 %}
