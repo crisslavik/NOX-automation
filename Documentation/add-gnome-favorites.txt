@@ -1,139 +1,106 @@
 #!/bin/bash
-# Flameshot Screenshot Tool Usage Examples
+# NOX VFX Dynamic GNOME Favorites Usage Examples
 
-echo "=== Flameshot Screenshot Tool Usage Examples ==="
+echo "=== NOX VFX Dynamic GNOME Favorites Usage ==="
 echo
 
-echo "📸 Installation:"
+echo "📌 Smart Favorites Management:"
 echo
 
-echo "1️⃣ Install on all workstations:"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml"
+echo "1️⃣ Add favorites based on installed software:"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml"
 echo
 
-echo "2️⃣ Install on specific machines:"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit artists"
+echo "2️⃣ Update favorites on specific machines:"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml --limit artists"
 echo
 
-echo "3️⃣ Install with custom configuration:"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml \\"
-echo "     -e 'configure_shortcuts=true set_as_default=true'"
+echo "3️⃣ Update favorites after installing new software:"
+echo "   # After installing Foundry Nuke:"
+echo "   ansible-playbook playbooks/software/install-foundry-nuke.yml --limit nox-cmp-04"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml --limit nox-cmp-04"
 echo
 
-echo "4️⃣ Install without GNOME shortcuts (for other desktop environments):"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml \\"
-echo "     -e 'configure_shortcuts=false'"
+echo "4️⃣ Verify current favorites configuration:"
+echo "   ansible all -m shell -a '/usr/local/bin/verify-nox-dynamic-favorites.sh'"
 echo
 
-echo "🔧 Configuration and Testing:"
+echo "🎯 Department-Specific Examples:"
 echo
 
-echo "   # Verify installation across fleet:"
-echo "   ansible all -m shell -a '/usr/local/bin/verify-flameshot.sh'"
+echo "   # Artists (may have Nuke, Blender, Krita):"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml --limit artists"
 echo
 
-echo "   # Test Flameshot availability:"
-echo "   ansible all -m shell -a 'flameshot --version'"
+echo "   # Developers (may have VS Code, Chrome, Sublime):"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml --limit developers"
 echo
 
-echo "   # Check GNOME Screenshot removal:"
-echo "   ansible all -m shell -a 'rpm -qa | grep gnome-screenshot || echo \"GNOME Screenshot removed\"'"
+echo "   # Compositors (may have Nuke, NukeStudio, RV):"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml --limit compositors"
 echo
 
-echo "   # Verify GNOME shortcuts are disabled:"
-echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 gsettings get org.gnome.settings-daemon.plugins.media-keys screenshot\""
+echo "🔄 Maintenance Workflow:"
 echo
 
-echo "   # Launch Flameshot GUI for testing:"
-echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 flameshot gui\" --limit nox-cmp-04"
+echo "   # Complete software + favorites setup:"
+echo "   ansible-playbook playbooks/software/install-foundry-nuke.yml --limit artists"
+echo "   ansible-playbook playbooks/software/install-blender.yml --limit artists"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml --limit artists"
 echo
 
-echo "📋 Department-Specific Deployments:"
+echo "   # Update favorites across entire fleet:"
+echo "   ansible-playbook playbooks/add-gnome-favorites.yml"
 echo
 
-echo "   # Artists (need screenshot tools for reviews):"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit artists"
+echo "🧪 Testing and Verification:"
 echo
 
-echo "   # Developers (for bug reporting and documentation):"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit developers"
+echo "   # Check what software is detected:"
+echo "   ansible all -m shell -a 'command -v blender && echo \"Blender found\" || echo \"Blender not found\"'"
+echo "   ansible all -m shell -a 'find /opt -name \"Nuke*.0\" 2>/dev/null | head -1 || echo \"Nuke not found\"'"
 echo
 
-echo "   # QA team (for testing documentation):"
-echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit qa"
+echo "   # Check current GNOME favorites:"
+echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 gsettings get org.gnome.shell favorite-apps\""
 echo
 
-echo "🎯 VFX Workflow Integration:"
+echo "   # Manual verification on a machine:"
+echo "   ansible nox-cmp-04 -m shell -a '/usr/local/bin/verify-nox-dynamic-favorites.sh'"
 echo
 
-echo "   # Install with complete VFX suite:"
-echo "   ansible-playbook playbooks/complete-vfx-workstation.yml \\"
-echo "     -e 'install_screenshot_tools=true'"
+echo "📊 Software Detection Examples:"
 echo
 
-echo "   # Add to GNOME favorites (manual):"
-echo "   echo \"Add 'flameshot.desktop' to GNOME favorites in gnome-config.yml\""
+echo "The playbook automatically detects:"
+echo "   ✅ Foundry Nuke, NukeX, NukeStudio"
+echo "   ✅ Nice DCV, Slack, Autodesk RV"
+echo "   ✅ xStudio, Deadline Monitor"
+echo "   ✅ VS Code, Sublime Text"
+echo "   ✅ Chrome, Brave Browser"
+echo "   ✅ Blender, Houdini, Das Element"
+echo "   ✅ DaVinci Resolve, Krita"
+echo "   ✅ Boris Mocha, Boris Silhouette"
 echo
 
-echo "⌨️ Keyboard Shortcuts (configured automatically):"
-echo "   • Print Screen: Open Flameshot area selection (replaces GNOME Screenshot)"
-echo "   • Manual: flameshot gui (interactive mode)"
-echo "   • Manual: flameshot full (full screen capture)"
-echo "   • GNOME Screenshot: Removed to prevent conflicts"
+echo "💡 Pro Tips:"
+echo "   • Always run after installing new VFX software"
+echo "   • Different machines will have different favorites based on installed software"
+echo "   • File Manager is always included in favorites"
+echo "   • Re-run anytime to refresh favorites based on current software"
+echo "   • Perfect for heterogeneous VFX environments"
 echo
 
-echo "📁 File Management:"
-echo
-
-echo "   # Check screenshot directories:"
-echo "   ansible all -m shell -a \"find /home -name Screenshots -type d 2>/dev/null\""
-echo
-
-echo "   # Set up shared screenshots location (optional):"
-echo "   ansible all -m file -a \"path=/shared/screenshots state=directory mode=0755\""
-echo "   ansible all -m lineinfile \\"
-echo "     -a \"path=/etc/skel/.config/flameshot/flameshot.ini \\"
-echo "         regexp='^path=' \\"
-echo "         line='path=/shared/screenshots'\""
-echo
-
-echo "🔄 Maintenance:"
-echo
-
-echo "   # Update Flameshot:"
-echo "   ansible all -m dnf -a 'name=flameshot state=latest'"
-echo
-
-echo "   # Restart Flameshot for users:"
-echo "   ansible all -m shell -a 'pkill flameshot; sleep 2; flameshot &' --become-user=\$(who | awk '{print \$1}' | head -1)"
-echo
-
-echo "   # Reset Flameshot configuration:"
-echo "   ansible all -m shell -a 'rm -rf ~/.config/flameshot' --become-user=\$(who | awk '{print \$1}' | head -1)"
-echo
-
-echo "📊 Fleet Management:"
-echo
-
-echo "   # Check Flameshot usage across workstations:"
-echo "   ansible all -m shell -a \"ps aux | grep flameshot | grep -v grep || echo 'Not running'\""
-echo
-
-echo "   # Check screenshots created today:"
-echo "   ansible all -m shell -a \"find /home -name Screenshots -type d -exec find {} -name '*.png' -newermt 'today' \\; 2>/dev/null | wc -l\""
-echo
-
-echo "💡 Pro Tips for VFX Workflows:"
-echo "   • Use annotations for feedback on renders"
-echo "   • Share screenshots directly to review platforms"
-echo "   • Configure custom save paths for project organization"
-echo "   • Use area selection for specific VFX elements"
-echo "   • Perfect for documenting software issues and workflows"
+echo "🏢 Active Directory Benefits:"
+echo "   • Any AD user gets consistent favorites on any machine"
+echo "   • System-wide configuration for all users"
+echo "   • No per-user setup required"
+echo "   • Immediate effect for current users + automatic for future logins"
 echo
 
 echo "🎨 Perfect for NOX VFX:"
-echo "   • Quick asset documentation"
-echo "   • Client review and feedback"
-echo "   • Bug reporting and troubleshooting"
-echo "   • Workflow documentation"
-echo "   • Training and tutorials"
+echo "   • Each workstation gets relevant favorites based on installed software"
+echo "   • Artists see VFX tools, developers see coding tools"
+echo "   • Automatically adapts to software changes"
+echo "   • AD users get same experience on any workstation"
+echo "   • No manual favorites management needed"
