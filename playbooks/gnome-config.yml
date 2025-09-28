@@ -9,21 +9,21 @@
     # GNOME theme configuration
     enable_dark_theme: true
     install_extensions: true
-    configure_favorites: true
+    # configure_favorites: true
     optimize_for_vfx: true
     
     # GNOME favorites (includes all NOX VFX software)
-    gnome_favorites:
-      - 'org.gnome.Nautilus.desktop'          # File Manager
-      - 'google-chrome.desktop'               # Google Chrome
-      - 'com.slack.Slack.desktop'             # Slack
-      - 'code.desktop'                        # VS Code
-      - 'sublime_text.desktop'                # Sublime Text
-      - 'org.kde.krita.desktop'               # Krita
-      - 'org.blender.Blender.desktop'         # Blender
-      - 'pureref.desktop'                     # PureRef
-      - 'org.gnome.Extensions.desktop'        # GNOME Extensions
-      - 'org.gnome.tweaks.desktop'            # GNOME Tweaks
+    # gnome_favorites:
+    #   - 'org.gnome.Nautilus.desktop'          # File Manager
+    #   - 'google-chrome.desktop'               # Google Chrome
+    #   - 'com.slack.Slack.desktop'             # Slack
+    #   - 'code.desktop'                        # VS Code
+    #   - 'sublime_text.desktop'                # Sublime Text
+    #   - 'org.kde.krita.desktop'               # Krita
+    #   - 'org.blender.Blender.desktop'         # Blender
+    #   - 'pureref.desktop'                     # PureRef
+    #   - 'org.gnome.Extensions.desktop'        # GNOME Extensions
+    #   - 'org.gnome.tweaks.desktop'            # GNOME Tweaks
 
   tasks:
     - name: Display GNOME configuration plan
@@ -102,7 +102,7 @@
           # GNOME Shell extensions configuration
           [org/gnome/shell]
           enabled-extensions=['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']
-          favorite-apps={{ gnome_favorites | to_json }}
+          # favorite-apps={{ gnome_favorites | to_json }}
           
           # Dash to Dock extension settings
           [org/gnome/shell/extensions/dash-to-dock]
@@ -207,7 +207,7 @@
           gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts true 2>/dev/null || true
           
           # Set favorites
-          gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites | to_json }}' 2>/dev/null || true
+          # gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites | to_json }}' 2>/dev/null || true
           
           # Terminal theme
           profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
@@ -275,7 +275,7 @@
               
               # Apply favorites
               sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites | to_json }}' 2>/dev/null || true
+                # gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites | to_json }}' 2>/dev/null || true
               
               # Apply interface settings
               sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
