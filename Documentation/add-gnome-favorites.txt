@@ -91,8 +91,16 @@ echo "   • Re-run anytime to refresh favorites based on current software"
 echo "   • Perfect for heterogeneous VFX environments"
 echo
 
+echo "🏢 Active Directory Benefits:"
+echo "   • Any AD user gets consistent favorites on any machine"
+echo "   • System-wide configuration for all users"
+echo "   • No per-user setup required"
+echo "   • Immediate effect for current users + automatic for future logins"
+echo
+
 echo "🎨 Perfect for NOX VFX:"
-echo "   • Each workstation gets relevant favorites"
+echo "   • Each workstation gets relevant favorites based on installed software"
 echo "   • Artists see VFX tools, developers see coding tools"
 echo "   • Automatically adapts to software changes"
+echo "   • AD users get same experience on any workstation"
 echo "   • No manual favorites management needed"
