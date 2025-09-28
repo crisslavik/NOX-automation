@@ -36,8 +36,12 @@ echo "   # Test Flameshot availability:"
 echo "   ansible all -m shell -a 'flameshot --version'"
 echo
 
-echo "   # Check GNOME shortcuts configuration:"
-echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings\""
+echo "   # Check GNOME Screenshot removal:"
+echo "   ansible all -m shell -a 'rpm -qa | grep gnome-screenshot || echo \"GNOME Screenshot removed\"'"
+echo
+
+echo "   # Verify GNOME shortcuts are disabled:"
+echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 gsettings get org.gnome.settings-daemon.plugins.media-keys screenshot\""
 echo
 
 echo "   # Launch Flameshot GUI for testing:"
@@ -72,10 +76,10 @@ echo "   echo \"Add 'flameshot.desktop' to GNOME favorites in gnome-config.yml\"
 echo
 
 echo "⌨️ Keyboard Shortcuts (configured automatically):"
-echo "   • Print Screen: Open Flameshot area selection"
-echo "   • Ctrl+Print Screen: Capture full screen"
+echo "   • Print Screen: Open Flameshot area selection (replaces GNOME Screenshot)"
 echo "   • Manual: flameshot gui (interactive mode)"
 echo "   • Manual: flameshot full (full screen capture)"
+echo "   • GNOME Screenshot: Removed to prevent conflicts"
 echo
 
 echo "📁 File Management:"
