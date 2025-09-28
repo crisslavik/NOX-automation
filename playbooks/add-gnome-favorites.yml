@@ -182,7 +182,36 @@
           {{ loop.index }}. {{ app.display_name }}
           {% endfor %}
 
-    # ====== APPLY TO CURRENT USERS ======
+    # ====== SYSTEM-WIDE CONFIGURATION FOR ALL AD USERS ======
+    - name: Create system-wide dconf configuration for dynamic favorites
+      ansible.builtin.copy:
+        content: |
+          # NOX VFX Dynamic GNOME Favorites Configuration
+          # Applied to all AD users who log into this machine
+          
+          [org/gnome/shell]
+          favorite-apps={{ gnome_favorites_list | to_json }}
+        dest: /etc/dconf/db/local.d/02-nox-dynamic-favorites
+        mode: '0644'
+      when: gnome_favorites_list is defined and gnome_favorites_list | length > 0
+      notify: update dconf
+
+    - name: Create dconf user profile (if not exists)
+      ansible.builtin.copy:
+        content: |
+          user-db:user
+          system-db:local
+        dest: /etc/dconf/profile/user
+        mode: '0644'
+        force: no  # Don't overwrite if exists
+
+    - name: Create dconf system database directory
+      ansible.builtin.file:
+        path: /etc/dconf/db/local.d
+        state: directory
+        mode: '0755'
+
+    # ====== APPLY TO CURRENT USERS (IMMEDIATE EFFECT) ======
     - name: Apply dynamic favorites to currently logged-in GNOME users
       ansible.builtin.shell: |
         for user in $(ps aux | grep -v grep | grep gnome-shell | awk '{print $1}' | sort | uniq); do
@@ -202,7 +231,56 @@
       when: gnome_favorites_list is defined and gnome_favorites_list | length > 0
       ignore_errors: yes
 
-    # ====== CREATE FUTURE USER CONFIGURATION ======
+    # ====== CREATE FUTURE USER CONFIGURATION FOR AD USERS ======
+    - name: Create dynamic favorites script for all future AD user logins
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # NOX VFX Dynamic GNOME Favorites Script for AD Users
+          # Applies to any AD user logging into this machine
+          
+          # Wait for GNOME session to be ready
+          sleep 20
+          
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              # Set up environment
+              if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+                  export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+              fi
+              
+              # Wait for GNOME Shell to be available
+              timeout=60
+              while [ $timeout -gt 0 ]; do
+                  if gsettings list-schemas | grep -q "org.gnome.shell" && pgrep -x gnome-shell > /dev/null; then
+                      break
+                  fi
+                  sleep 2
+                  ((timeout--))
+              done
+              
+              echo "Applying NOX VFX dynamic favorites for AD user $(whoami)..."
+              
+              # Apply the detected favorites to this AD user
+              gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites_list | to_json }}' 2>/dev/null || true
+              
+              logger "NOX VFX dynamic favorites applied for AD user $(whoami) on $(hostname)"
+          fi
+        dest: /usr/local/bin/set-nox-dynamic-favorites.sh
+        mode: '0755'
+      when: gnome_favorites_list is defined and gnome_favorites_list | length > 0
+
+    - name: Add dynamic favorites to system profile for all AD users
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Apply NOX VFX dynamic favorites for any AD user login
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              # Run in background with delay to ensure GNOME Shell is ready
+              (sleep 30 && /usr/local/bin/set-nox-dynamic-favorites.sh &) 2>/dev/null
+          fi
+        dest: /etc/profile.d/Z96-nox-dynamic-favorites.sh
+        mode: '0755'
+      when: gnome_favorites_list is defined and gnome_favorites_list | length > 0
     - name: Create dynamic favorites script for future logins
       ansible.builtin.copy:
         content: |
@@ -239,13 +317,13 @@
         mode: '0755'
       when: gnome_favorites_list is defined and gnome_favorites_list | length > 0
 
-    - name: Create autostart entry for dynamic favorites
+    - name: Create autostart entry for dynamic favorites (all users)
       ansible.builtin.copy:
         content: |
           [Desktop Entry]
           Type=Application
           Name=NOX Dynamic Favorites
-          Comment=Apply NOX VFX dynamic GNOME favorites based on installed software
+          Comment=Apply NOX VFX dynamic GNOME favorites for AD users
           Exec=/usr/local/bin/set-nox-dynamic-favorites.sh
           Hidden=false
           NoDisplay=true
@@ -289,7 +367,23 @@
           {% endif %}
           echo
           
-          echo "📋 Favorites Status:"
+          echo "🔄 System-Wide Configuration (for all AD users):"
+          if [ -f "/etc/dconf/db/local.d/02-nox-dynamic-favorites" ]; then
+              echo "✅ System-wide dconf configuration created"
+              echo "   Location: /etc/dconf/db/local.d/02-nox-dynamic-favorites"
+          else
+              echo "❌ System-wide dconf configuration missing"
+          fi
+          
+          if [ -f "/etc/profile.d/Z96-nox-dynamic-favorites.sh" ]; then
+              echo "✅ System profile configuration created"
+              echo "   All AD users will get these favorites on login"
+          else
+              echo "❌ System profile configuration missing"
+          fi
+          echo
+          
+          echo "📋 Favorites Status (current user):"
           {% for app in final_favorites | default([]) %}
           if [[ "$current_favorites" == *"{{ app.desktop_file }}"* ]]; then
               echo "✅ {{ app.display_name }} in favorites"
@@ -317,14 +411,22 @@
           • No VFX software detected on this machine
           {% endif %}
           
-          🎯 Favorites Configuration:
+          🎯 AD User Configuration:
           {% if gnome_favorites_list and gnome_favorites_list | length > 0 %}
-          • {{ gnome_favorites_list | length }} applications added to favorites
-          • Applied to currently logged-in users
-          • Configured for future user logins
+          • {{ gnome_favorites_list | length }} applications configured as system-wide favorites
+          • Applied to currently logged-in users immediately
+          • Configured for ALL future AD user logins
+          • System-wide dconf configuration created
+          • Profile scripts ensure favorites on every login
           {% else %}
           • No favorites configured (no software detected)
           {% endif %}
+          
+          🏢 Active Directory Benefits:
+          • Any AD user can log into any machine and get relevant favorites
+          • Consistent experience across all NOX VFX workstations
+          • No per-user configuration needed
+          • Automatic application on login
           
           📋 Verification:
           Run as user: /usr/local/bin/verify-nox-dynamic-favorites.sh
@@ -336,3 +438,8 @@
           
           💡 Re-run this playbook after installing new VFX software
           to automatically update GNOME favorites!
+
+  handlers:
+    - name: update dconf
+      ansible.builtin.command: dconf update
+      changed_when: true
