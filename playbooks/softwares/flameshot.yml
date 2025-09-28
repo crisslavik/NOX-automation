@@ -1,0 +1,376 @@
+---
+# Install Flameshot Screenshot Tool
+- name: Install Flameshot Screenshot Tool
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    configure_shortcuts: true
+    set_as_default: true
+    create_desktop_entry: true
+    
+  tasks:
+    - name: Display Flameshot installation plan
+      ansible.builtin.debug:
+        msg: |
+          📸 Flameshot Screenshot Tool Installation
+          
+          Target: {{ inventory_hostname }}
+          
+          🔧 Configuration:
+          • Keyboard shortcuts: {{ 'Yes' if configure_shortcuts else 'No' }}
+          • Set as default: {{ 'Yes' if set_as_default else 'No' }}
+          • Desktop integration: {{ 'Yes' if create_desktop_entry else 'No' }}
+          
+          📋 Flameshot is a powerful screenshot tool with:
+          • Advanced annotation features
+          • Easy sharing options
+          • Configurable shortcuts
+          • Perfect for VFX workflows
+
+    # ====== INSTALLATION ======
+    - name: Install Flameshot from repositories
+      ansible.builtin.dnf:
+        name: flameshot
+        state: present
+      register: flameshot_repo_install
+
+    - name: Install Flameshot from EPEL if not in main repos
+      block:
+        - name: Enable EPEL repository
+          ansible.builtin.dnf:
+            name: epel-release
+            state: present
+
+        - name: Install Flameshot from EPEL
+          ansible.builtin.dnf:
+            name: flameshot
+            state: present
+      when: flameshot_repo_install is failed
+
+    - name: Install Flameshot from Flatpak (final fallback)
+      block:
+        - name: Ensure Flatpak is available
+          ansible.builtin.dnf:
+            name: flatpak
+            state: present
+
+        - name: Add Flathub repository
+          ansible.builtin.flatpak_remote:
+            name: flathub
+            state: present
+            flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
+
+        - name: Install Flameshot via Flatpak
+          ansible.builtin.flatpak:
+            name: org.flameshot.Flameshot
+            state: present
+      when: flameshot_repo_install is failed
+      ignore_errors: yes
+
+    # ====== CONFIGURATION ======
+    - name: Create Flameshot configuration directory
+      ansible.builtin.file:
+        path: /etc/skel/.config/flameshot
+        state: directory
+        mode: '0755'
+
+    - name: Configure Flameshot default settings
+      ansible.builtin.copy:
+        content: |
+          [General]
+          disabledTrayIcon=false
+          showStartupLaunchMessage=false
+          
+          [Shortcuts]
+          TYPE_ARROW=A
+          TYPE_CIRCLE=C
+          TYPE_CIRCLECOUNT=
+          TYPE_COMMIT_CURRENT_TOOL=Ctrl+Return
+          TYPE_COPY=Ctrl+C
+          TYPE_DELETE_CURRENT_TOOL=Del
+          TYPE_DRAWER=D
+          TYPE_EXIT=Ctrl+Q
+          TYPE_IMAGEUPLOADER=Return
+          TYPE_MARKER=M
+          TYPE_MOVESELECTION=Ctrl+M
+          TYPE_MOVE_LEFT=Left
+          TYPE_MOVE_RIGHT=Right
+          TYPE_MOVE_UP=Up
+          TYPE_MOVE_DOWN=Down
+          TYPE_OPEN_APP=Ctrl+O
+          TYPE_PENCIL=P
+          TYPE_PIN=
+          TYPE_PIXELATE=B
+          TYPE_RECTANGLE=R
+          TYPE_REDO=Ctrl+Shift+Z
+          TYPE_RESIZE_DOWN=Shift+Down
+          TYPE_RESIZE_LEFT=Shift+Left
+          TYPE_RESIZE_RIGHT=Shift+Right
+          TYPE_RESIZE_UP=Shift+Up
+          TYPE_SAVE=Ctrl+S
+          TYPE_SELECTION=S
+          TYPE_SELECTIONINDICATOR=
+          TYPE_SELECT_ALL=Ctrl+A
+          TYPE_TEXT=T
+          TYPE_TOGGLE_PANEL=Space
+          TYPE_UNDO=Ctrl+Z
+          
+          [SavePath]
+          fixed=true
+          path=/home/$USER/Pictures/Screenshots
+        dest: /etc/skel/.config/flameshot/flameshot.ini
+        mode: '0644'
+
+    - name: Create Screenshots directory in user template
+      ansible.builtin.file:
+        path: /etc/skel/Pictures/Screenshots
+        state: directory
+        mode: '0755'
+
+    # ====== DESKTOP INTEGRATION ======
+    - name: Create enhanced Flameshot desktop entry
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Name=Flameshot
+          Comment=Powerful yet simple to use screenshot software
+          Comment[es]=Potente pero simple de usar el software de captura de pantalla
+          GenericName=Screenshot tool
+          GenericName[es]=Herramienta de captura de pantalla
+          Exec=flameshot gui
+          Icon=flameshot
+          Terminal=false
+          Type=Application
+          Categories=Graphics;Photography;
+          StartupNotify=true
+          Keywords=screen;capture;screenshot;grab;snip;
+          
+          Actions=TakeScreenshot;LaunchConfig;
+          
+          [Desktop Action TakeScreenshot]
+          Name=Take Screenshot
+          Exec=flameshot gui
+          
+          [Desktop Action LaunchConfig]
+          Name=Configure Flameshot
+          Exec=flameshot config
+        dest: /usr/share/applications/flameshot.desktop
+        mode: '0644'
+      when: create_desktop_entry
+
+    # ====== GNOME KEYBOARD SHORTCUTS ======
+    - name: Create GNOME keyboard shortcuts configuration script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Configure Flameshot keyboard shortcuts for GNOME
+          
+          # Wait for GNOME session
+          sleep 10
+          
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              # Set up environment
+              if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+                  export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+              fi
+              
+              echo "Configuring Flameshot shortcuts for GNOME..."
+              
+              # Remove default Print Screen binding
+              gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys window-screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys area-screenshot '[]' 2>/dev/null || true
+              
+              # Set custom Flameshot shortcuts
+              gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/']" 2>/dev/null || true
+              
+              # Flameshot GUI (Print Screen key)
+              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ name 'Flameshot Screenshot' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ command 'flameshot gui' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ binding 'Print' 2>/dev/null || true
+              
+              # Flameshot full screen (Ctrl+Print Screen)
+              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/ name 'Flameshot Full Screen' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/ command 'flameshot full' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/ binding '<Primary>Print' 2>/dev/null || true
+              
+              echo "Flameshot keyboard shortcuts configured"
+              logger "Flameshot GNOME shortcuts configured for user $(whoami)"
+          fi
+        dest: /usr/local/bin/configure-flameshot-shortcuts.sh
+        mode: '0755'
+      when: configure_shortcuts
+
+    - name: Create autostart entry for Flameshot
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=Flameshot
+          Comment=Enable Flameshot screenshot tool
+          Exec=flameshot
+          Icon=flameshot
+          Hidden=false
+          NoDisplay=true
+          X-GNOME-Autostart-enabled=true
+          X-GNOME-Autostart-Delay=10
+          Categories=Utility;
+        dest: /etc/xdg/autostart/flameshot.desktop
+        mode: '0644'
+
+    - name: Create autostart entry for Flameshot shortcuts configuration
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=Flameshot Shortcuts
+          Comment=Configure Flameshot keyboard shortcuts
+          Exec=/usr/local/bin/configure-flameshot-shortcuts.sh
+          Hidden=false
+          NoDisplay=true
+          X-GNOME-Autostart-enabled=true
+          X-GNOME-Autostart-Delay=15
+          Categories=System;Settings;
+        dest: /etc/xdg/autostart/flameshot-shortcuts.desktop
+        mode: '0644'
+      when: configure_shortcuts
+
+    # ====== APPLY TO CURRENT USERS ======
+    - name: Apply Flameshot shortcuts to currently logged-in users
+      ansible.builtin.shell: |
+        for user in $(ps aux | grep -v grep | grep gnome-shell | awk '{print $1}' | sort | uniq); do
+          if [ -n "$user" ] && [ "$user" != "gdm" ]; then
+            user_id=$(id -u "$user" 2>/dev/null)
+            if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
+              echo "Configuring Flameshot for logged-in user: $user"
+              sudo -u "$user" /usr/local/bin/configure-flameshot-shortcuts.sh &
+            fi
+          fi
+        done
+      when: configure_shortcuts
+      ignore_errors: yes
+
+    # ====== VERIFICATION ======
+    - name: Verify Flameshot installation
+      ansible.builtin.command: flameshot --version
+      register: flameshot_version
+      failed_when: false
+      changed_when: false
+
+    - name: Create Flameshot verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== Flameshot Screenshot Tool Verification ==="
+          echo
+          
+          echo "📸 Installation:"
+          if command -v flameshot >/dev/null 2>&1; then
+              echo "✅ Flameshot installed: $(flameshot --version 2>/dev/null || echo 'Version info unavailable')"
+              
+              # Check installation method
+              if rpm -qa | grep -q flameshot; then
+                  echo "✅ Installed via RPM package"
+              elif flatpak list | grep -q flameshot; then
+                  echo "✅ Installed via Flatpak"
+              else
+                  echo "✅ Installed (method unknown)"
+              fi
+          else
+              echo "❌ Flameshot not found"
+          fi
+          echo
+          
+          echo "🔧 Configuration:"
+          if [ -f "/etc/skel/.config/flameshot/flameshot.ini" ]; then
+              echo "✅ Default configuration template created"
+          else
+              echo "❌ Configuration template missing"
+          fi
+          
+          if [ -d "/etc/skel/Pictures/Screenshots" ]; then
+              echo "✅ Screenshots directory template created"
+          else
+              echo "❌ Screenshots directory template missing"
+          fi
+          echo
+          
+          echo "🖥️ Desktop Integration:"
+          if [ -f "/usr/share/applications/flameshot.desktop" ]; then
+              echo "✅ Desktop entry created"
+          else
+              echo "❌ Desktop entry missing"
+          fi
+          
+          if [ -f "/etc/xdg/autostart/flameshot.desktop" ]; then
+              echo "✅ Autostart configured"
+          else
+              echo "❌ Autostart missing"
+          fi
+          echo
+          
+          echo "⌨️ Keyboard Shortcuts (GNOME):"
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              shortcuts=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || echo "[]")
+              if [[ "$shortcuts" == *"flameshot"* ]]; then
+                  echo "✅ GNOME shortcuts configured"
+                  echo "   Print Screen: flameshot gui"
+                  echo "   Ctrl+Print Screen: flameshot full"
+              else
+                  echo "⚠️ GNOME shortcuts not configured"
+              fi
+          else
+              echo "ℹ️ Not in GNOME session - cannot check shortcuts"
+          fi
+          echo
+          
+          echo "🎯 Usage:"
+          echo "• GUI Mode: flameshot gui"
+          echo "• Full Screen: flameshot full"
+          echo "• Config: flameshot config"
+          echo "• Print Screen key: Take screenshot with GUI"
+          echo "• Ctrl+Print Screen: Take full screen screenshot"
+          echo
+          
+          echo "📁 Screenshots saved to: ~/Pictures/Screenshots/"
+        dest: /usr/local/bin/verify-flameshot.sh
+        mode: '0755'
+
+    - name: Run Flameshot verification
+      ansible.builtin.shell: /usr/local/bin/verify-flameshot.sh
+      register: flameshot_verification
+      changed_when: false
+
+    - name: Display verification results
+      ansible.builtin.debug:
+        msg: "{{ flameshot_verification.stdout }}"
+
+    - name: Display installation completion
+      ansible.builtin.debug:
+        msg: |
+          📸 Flameshot Installation Complete!
+          
+          ✅ Installed Components:
+          • Flameshot screenshot tool
+          • GNOME keyboard shortcuts (Print Screen)
+          • Desktop integration and autostart
+          • Default configuration template
+          • Screenshots directory setup
+          
+          🎯 Key Features:
+          • Advanced annotation tools
+          • Easy sharing and uploading
+          • Configurable shortcuts
+          • Perfect for VFX documentation
+          
+          ⌨️ Keyboard Shortcuts:
+          • Print Screen: Open Flameshot GUI
+          • Ctrl+Print Screen: Full screen capture
+          
+          📁 Screenshots Location: ~/Pictures/Screenshots/
+          
+          🔧 Configuration: flameshot config
+          
+          Perfect for documenting VFX workflows and sharing assets!
