@@ -1,0 +1,109 @@
+---
+- name: Deploy Environment Variables for Multi-User AD Environment
+  hosts: all
+  become: yes
+  
+  vars:
+    env_vars:
+      NUKE_PATH: "/opt/Nuke16/Nuke16.app"
+      NUKE_LICENSE: "5053@license"
+      DASELEMENT_PORT: "5053@license"
+      NEATVIDEO_PORT: "5053@license"
+      DEADLINE_REPO_PATH: "/mnt/_deadlinerepo/repositories"
+      SHOTGRID_PATH: ""
+      RV_PATH: ""
+  
+  tasks:
+    # Create system-wide environment variables
+    - name: Create system-wide profile script
+      copy:
+        dest: /etc/profile.d/custom_env_vars.sh
+        mode: '0644'
+        content: |
+          #!/bin/bash
+          # Custom Environment Variables for all users (including AD users)
+          {% for key, value in env_vars.items() %}
+          {% if value != "" %}
+          export {{ key }}="{{ value }}"
+          {% endif %}
+          {% endfor %}
+    
+    # Set in /etc/environment for non-shell applications
+    - name: Set environment variables in /etc/environment
+      lineinfile:
+        path: /etc/environment
+        line: '{{ item.key }}="{{ item.value }}"'
+        regexp: '^{{ item.key }}='
+        state: present
+        create: yes
+      loop: "{{ env_vars | dict2items }}"
+      when: item.value != ""
+    
+    # Ensure PAM reads environment for AD users - RedHat based
+    - name: Ensure PAM reads environment for AD users (RedHat/CentOS)
+      lineinfile:
+        path: /etc/pam.d/system-auth
+        line: 'session     required      pam_env.so'
+        insertafter: '^session'
+        state: present
+      when: ansible_os_family == "RedHat"
+    
+    # Ensure PAM reads environment for AD users - Debian based
+    - name: Ensure PAM reads environment for AD users (Debian/Ubuntu)
+      lineinfile:
+        path: /etc/pam.d/common-session
+        line: 'session required pam_env.so'
+        insertafter: '^session'
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    # Validate environment variables
+    - name: Validate environment variables are accessible
+      shell: |
+        source /etc/profile.d/custom_env_vars.sh
+        echo "NUKE_PATH=$NUKE_PATH"
+        echo "NUKE_LICENSE=$NUKE_LICENSE"
+        echo "DASELEMENT_PORT=$DASELEMENT_PORT"
+        echo "NEATVIDEO_PORT=$NEATVIDEO_PORT"
+        echo "DEADLINE_REPO_PATH=$DEADLINE_REPO_PATH"
+      register: env_check
+      changed_when: false
+    
+    - name: Display validation results
+      debug:
+        msg: "Environment variables loaded: {{ env_check.stdout_lines }}"
+    
+    # Test path accessibility
+    - name: Test path accessibility
+      stat:
+        path: "{{ item.value }}"
+      loop: "{{ env_vars | dict2items }}"
+      when: 
+        - item.value != ""
+        - item.key in ['NUKE_PATH', 'DEADLINE_REPO_PATH']
+      register: path_checks
+      failed_when: false
+    
+    - name: Report missing paths
+      debug:
+        msg: "Warning: {{ item.item.key }} path does not exist: {{ item.item.value }}"
+      loop: "{{ path_checks.results }}"
+      when: 
+        - item.stat is defined
+        - not item.stat.exists
+    
+    # Create deployment log
+    - name: Create deployment log
+      lineinfile:
+        path: /var/log/ansible_env_deployment.log
+        line: "{{ ansible_date_time.iso8601 }} - Environment variables deployed by {{ ansible_user_id }} for hosts {{ inventory_hostname }}"
+        create: yes
+        mode: '0644'
+    
+    # Notify about relogin requirement
+    - name: Display completion message
+      debug:
+        msg: 
+          - "Environment variables have been deployed successfully!"
+          - "Active users need to log out and log back in for changes to take effect."
+          - "This applies to both local and AD users."
