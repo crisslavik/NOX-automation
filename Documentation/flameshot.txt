@@ -1,0 +1,135 @@
+#!/bin/bash
+# Flameshot Screenshot Tool Usage Examples
+
+echo "=== Flameshot Screenshot Tool Usage Examples ==="
+echo
+
+echo "📸 Installation:"
+echo
+
+echo "1️⃣ Install on all workstations:"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml"
+echo
+
+echo "2️⃣ Install on specific machines:"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit artists"
+echo
+
+echo "3️⃣ Install with custom configuration:"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml \\"
+echo "     -e 'configure_shortcuts=true set_as_default=true'"
+echo
+
+echo "4️⃣ Install without GNOME shortcuts (for other desktop environments):"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml \\"
+echo "     -e 'configure_shortcuts=false'"
+echo
+
+echo "🔧 Configuration and Testing:"
+echo
+
+echo "   # Verify installation across fleet:"
+echo "   ansible all -m shell -a '/usr/local/bin/verify-flameshot.sh'"
+echo
+
+echo "   # Test Flameshot availability:"
+echo "   ansible all -m shell -a 'flameshot --version'"
+echo
+
+echo "   # Check GNOME shortcuts configuration:"
+echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings\""
+echo
+
+echo "   # Launch Flameshot GUI for testing:"
+echo "   ansible all -m shell -a \"sudo -u \\\$(who | awk '{print \\\$1}' | head -1) DISPLAY=:0 flameshot gui\" --limit nox-cmp-04"
+echo
+
+echo "📋 Department-Specific Deployments:"
+echo
+
+echo "   # Artists (need screenshot tools for reviews):"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit artists"
+echo
+
+echo "   # Developers (for bug reporting and documentation):"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit developers"
+echo
+
+echo "   # QA team (for testing documentation):"
+echo "   ansible-playbook playbooks/software/install-flameshot.yml --limit qa"
+echo
+
+echo "🎯 VFX Workflow Integration:"
+echo
+
+echo "   # Install with complete VFX suite:"
+echo "   ansible-playbook playbooks/complete-vfx-workstation.yml \\"
+echo "     -e 'install_screenshot_tools=true'"
+echo
+
+echo "   # Add to GNOME favorites (manual):"
+echo "   echo \"Add 'flameshot.desktop' to GNOME favorites in gnome-config.yml\""
+echo
+
+echo "⌨️ Keyboard Shortcuts (configured automatically):"
+echo "   • Print Screen: Open Flameshot area selection"
+echo "   • Ctrl+Print Screen: Capture full screen"
+echo "   • Manual: flameshot gui (interactive mode)"
+echo "   • Manual: flameshot full (full screen capture)"
+echo
+
+echo "📁 File Management:"
+echo
+
+echo "   # Check screenshot directories:"
+echo "   ansible all -m shell -a \"find /home -name Screenshots -type d 2>/dev/null\""
+echo
+
+echo "   # Set up shared screenshots location (optional):"
+echo "   ansible all -m file -a \"path=/shared/screenshots state=directory mode=0755\""
+echo "   ansible all -m lineinfile \\"
+echo "     -a \"path=/etc/skel/.config/flameshot/flameshot.ini \\"
+echo "         regexp='^path=' \\"
+echo "         line='path=/shared/screenshots'\""
+echo
+
+echo "🔄 Maintenance:"
+echo
+
+echo "   # Update Flameshot:"
+echo "   ansible all -m dnf -a 'name=flameshot state=latest'"
+echo
+
+echo "   # Restart Flameshot for users:"
+echo "   ansible all -m shell -a 'pkill flameshot; sleep 2; flameshot &' --become-user=\$(who | awk '{print \$1}' | head -1)"
+echo
+
+echo "   # Reset Flameshot configuration:"
+echo "   ansible all -m shell -a 'rm -rf ~/.config/flameshot' --become-user=\$(who | awk '{print \$1}' | head -1)"
+echo
+
+echo "📊 Fleet Management:"
+echo
+
+echo "   # Check Flameshot usage across workstations:"
+echo "   ansible all -m shell -a \"ps aux | grep flameshot | grep -v grep || echo 'Not running'\""
+echo
+
+echo "   # Check screenshots created today:"
+echo "   ansible all -m shell -a \"find /home -name Screenshots -type d -exec find {} -name '*.png' -newermt 'today' \\; 2>/dev/null | wc -l\""
+echo
+
+echo "💡 Pro Tips for VFX Workflows:"
+echo "   • Use annotations for feedback on renders"
+echo "   • Share screenshots directly to review platforms"
+echo "   • Configure custom save paths for project organization"
+echo "   • Use area selection for specific VFX elements"
+echo "   • Perfect for documenting software issues and workflows"
+echo
+
+echo "🎨 Perfect for NOX VFX:"
+echo "   • Quick asset documentation"
+echo "   • Client review and feedback"
+echo "   • Bug reporting and troubleshooting"
+echo "   • Workflow documentation"
+echo "   • Training and tutorials"
