@@ -160,12 +160,51 @@
         mode: '0644'
       when: create_desktop_entry
 
-    # ====== GNOME KEYBOARD SHORTCUTS ======
-    - name: Create GNOME keyboard shortcuts configuration script
+    # ====== REMOVE GNOME SCREENSHOT CONFLICTS ======
+    - name: Remove GNOME Screenshot application
+      ansible.builtin.dnf:
+        name: 
+          - gnome-screenshot
+        state: absent
+      ignore_errors: yes
+
+    - name: Disable GNOME built-in screenshot shortcuts
       ansible.builtin.copy:
         content: |
           #!/bin/bash
-          # Configure Flameshot keyboard shortcuts for GNOME
+          # Remove GNOME built-in screenshot shortcuts to avoid conflicts with Flameshot
+          
+          # Wait for GNOME session
+          sleep 10
+          
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              # Set up environment
+              if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+                  export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+              fi
+              
+              echo "Removing GNOME built-in screenshot shortcuts..."
+              
+              # Disable all default screenshot shortcuts
+              gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys window-screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys area-screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot-clip '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys window-screenshot-clip '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys area-screenshot-clip '[]' 2>/dev/null || true
+              
+              echo "GNOME screenshot shortcuts disabled"
+              logger "GNOME screenshot shortcuts disabled for Flameshot compatibility - user $(whoami)"
+          fi
+        dest: /usr/local/bin/disable-gnome-screenshot.sh
+        mode: '0755'
+
+    # ====== GNOME KEYBOARD SHORTCUTS ======
+    - name: Create Flameshot keyboard shortcuts configuration script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Configure Flameshot keyboard shortcuts for GNOME (replacing GNOME Screenshot)
           
           # Wait for GNOME session
           sleep 10
@@ -178,26 +217,26 @@
               
               echo "Configuring Flameshot shortcuts for GNOME..."
               
-              # Remove default Print Screen binding
+              # First, disable all GNOME default screenshot shortcuts
               gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot '[]' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys window-screenshot '[]' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys area-screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot-clip '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys window-screenshot-clip '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys area-screenshot-clip '[]' 2>/dev/null || true
               
               # Set custom Flameshot shortcuts
-              gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/']" 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/']" 2>/dev/null || true
               
-              # Flameshot GUI (Print Screen key)
+              # Flameshot GUI (Print Screen key) - Main screenshot tool
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ name 'Flameshot Screenshot' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ command 'flameshot gui' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ binding 'Print' 2>/dev/null || true
               
-              # Flameshot full screen (Ctrl+Print Screen)
-              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/ name 'Flameshot Full Screen' 2>/dev/null || true
-              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/ command 'flameshot full' 2>/dev/null || true
-              gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-full/ binding '<Primary>Print' 2>/dev/null || true
-              
-              echo "Flameshot keyboard shortcuts configured"
-              logger "Flameshot GNOME shortcuts configured for user $(whoami)"
+              echo "✅ Print Screen key now mapped to: flameshot gui"
+              echo "✅ GNOME Screenshot shortcuts disabled"
+              echo "Flameshot keyboard shortcuts configured successfully"
+              logger "Flameshot GNOME shortcuts configured (replaced GNOME Screenshot) for user $(whoami)"
           fi
         dest: /usr/local/bin/configure-flameshot-shortcuts.sh
         mode: '0755'
@@ -220,6 +259,22 @@
         dest: /etc/xdg/autostart/flameshot.desktop
         mode: '0644'
 
+    - name: Create autostart entry for disabling GNOME screenshot
+      ansible.builtin.copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=Disable GNOME Screenshot
+          Comment=Disable GNOME built-in screenshot shortcuts for Flameshot compatibility
+          Exec=/usr/local/bin/disable-gnome-screenshot.sh
+          Hidden=false
+          NoDisplay=true
+          X-GNOME-Autostart-enabled=true
+          X-GNOME-Autostart-Delay=10
+          Categories=System;Settings;
+        dest: /etc/xdg/autostart/disable-gnome-screenshot.desktop
+        mode: '0644'
+
     - name: Create autostart entry for Flameshot shortcuts configuration
       ansible.builtin.copy:
         content: |
@@ -238,13 +293,18 @@
       when: configure_shortcuts
 
     # ====== APPLY TO CURRENT USERS ======
-    - name: Apply Flameshot shortcuts to currently logged-in users
+    - name: Remove GNOME Screenshot and apply Flameshot shortcuts to currently logged-in users
       ansible.builtin.shell: |
         for user in $(ps aux | grep -v grep | grep gnome-shell | awk '{print $1}' | sort | uniq); do
           if [ -n "$user" ] && [ "$user" != "gdm" ]; then
             user_id=$(id -u "$user" 2>/dev/null)
             if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
               echo "Configuring Flameshot for logged-in user: $user"
+              
+              # Disable GNOME screenshot shortcuts
+              sudo -u "$user" /usr/local/bin/disable-gnome-screenshot.sh &
+              
+              # Configure Flameshot shortcuts
               sudo -u "$user" /usr/local/bin/configure-flameshot-shortcuts.sh &
             fi
           fi
@@ -264,6 +324,20 @@
         content: |
           #!/bin/bash
           echo "=== Flameshot Screenshot Tool Verification ==="
+          echo
+          
+          echo "📦 GNOME Screenshot Removal:"
+          if ! rpm -qa | grep -q gnome-screenshot; then
+              echo "✅ GNOME Screenshot package removed"
+          else
+              echo "⚠️ GNOME Screenshot package still installed"
+          fi
+          
+          if [ -f "/usr/local/bin/disable-gnome-screenshot.sh" ]; then
+              echo "✅ GNOME Screenshot disabling script created"
+          else
+              echo "❌ GNOME Screenshot disabling script missing"
+          fi
           echo
           
           echo "📸 Installation:"
@@ -313,13 +387,21 @@
           
           echo "⌨️ Keyboard Shortcuts (GNOME):"
           if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+              # Check if GNOME screenshot shortcuts are disabled
+              screenshot_disabled=$(gsettings get org.gnome.settings-daemon.plugins.media-keys screenshot 2>/dev/null)
+              if [[ "$screenshot_disabled" == "[]" ]] || [[ "$screenshot_disabled" == "@as []" ]]; then
+                  echo "✅ GNOME Screenshot shortcuts disabled"
+              else
+                  echo "⚠️ GNOME Screenshot shortcuts still active: $screenshot_disabled"
+              fi
+              
+              # Check if Flameshot shortcuts are configured
               shortcuts=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || echo "[]")
               if [[ "$shortcuts" == *"flameshot"* ]]; then
-                  echo "✅ GNOME shortcuts configured"
-                  echo "   Print Screen: flameshot gui"
-                  echo "   Ctrl+Print Screen: flameshot full"
+                  echo "✅ Flameshot shortcuts configured"
+                  echo "   Print Screen: flameshot gui (replaces GNOME Screenshot)"
               else
-                  echo "⚠️ GNOME shortcuts not configured"
+                  echo "⚠️ Flameshot shortcuts not configured"
               fi
           else
               echo "ℹ️ Not in GNOME session - cannot check shortcuts"
@@ -328,10 +410,10 @@
           
           echo "🎯 Usage:"
           echo "• GUI Mode: flameshot gui"
-          echo "• Full Screen: flameshot full"
+          echo "• Full Screen: flameshot full"  
           echo "• Config: flameshot config"
-          echo "• Print Screen key: Take screenshot with GUI"
-          echo "• Ctrl+Print Screen: Take full screen screenshot"
+          echo "• Print Screen key: Take screenshot with Flameshot GUI (replaces GNOME Screenshot)"
+          echo "• Right-click Flameshot tray icon for options"
           echo
           
           echo "📁 Screenshots saved to: ~/Pictures/Screenshots/"
@@ -354,20 +436,19 @@
           
           ✅ Installed Components:
           • Flameshot screenshot tool
-          • GNOME keyboard shortcuts (Print Screen)
+          • GNOME Screenshot package removed (conflict resolution)
+          • Custom keyboard shortcut (Print Screen → Flameshot)
           • Desktop integration and autostart
           • Default configuration template
           • Screenshots directory setup
           
-          🎯 Key Features:
-          • Advanced annotation tools
-          • Easy sharing and uploading
-          • Configurable shortcuts
-          • Perfect for VFX documentation
+          🔧 GNOME Integration:
+          • GNOME Screenshot shortcuts disabled
+          • Print Screen key remapped to Flameshot
+          • No conflicts with built-in screenshot tools
           
           ⌨️ Keyboard Shortcuts:
-          • Print Screen: Open Flameshot GUI
-          • Ctrl+Print Screen: Full screen capture
+          • Print Screen: Open Flameshot GUI (replaces GNOME Screenshot)
           
           📁 Screenshots Location: ~/Pictures/Screenshots/
           
