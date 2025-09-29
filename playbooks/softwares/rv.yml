@@ -1,9 +1,9 @@
 ---
-- name: Deploy Autodesk RV to Rocky Linux 9
+- name: Deploy Autodesk RV to AlmaLinux 9
   hosts: all
   become: yes
   vars:
-    rv_source_zip: "files/RV-Linux-Rocky9-Release-2025.0.0.zip"
+    rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
     rv_install_path: "/opt/RV"
   
   tasks:
