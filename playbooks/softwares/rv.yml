@@ -32,31 +32,10 @@
         dest: "/tmp/"
         remote_src: yes
 
-    - name: Find RV directory with bin folder
-      find:
-        paths: "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
-        file_type: directory
-        patterns: "*"
-        recurse: yes
-      register: all_dirs
-
-    - name: Check for bin directory
-      stat:
-        path: "{{ item.path }}/bin"
-      loop: "{{ all_dirs.files }}"
-      register: bin_checks
-
-    - name: Identify RV root directory
-      set_fact:
-        rv_root: "{{ item.item.path }}"
-      when: item.stat.exists
-      loop: "{{ bin_checks.results }}"
-      loop_control:
-        label: "{{ item.item.path }}"
-
-    - name: Copy RV contents to /opt/RV
-      shell: "cp -r {{ rv_root }}/* {{ rv_install_path }}/"
-      when: rv_root is defined
+    - name: Copy RV contents from extracted folder to /opt/RV
+      shell: "cp -r /tmp/RV-Linux-Rocky9-Release-2025.0.0/RV/* {{ rv_install_path }}/"
+      args:
+        creates: "{{ rv_install_path }}/bin/rv"
 
     - name: Set proper permissions on RV directory
       file:
@@ -115,7 +94,7 @@
       debug:
         msg: "RV binary exists: {{ rv_binary.stat.exists }}"
 
-    - name: Clean up temporary files AFTER installation
+    - name: Clean up temporary files
       file:
         path: "{{ item }}"
         state: absent
