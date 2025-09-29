@@ -7,9 +7,13 @@
     rv_install_path: "/opt/RV"
   
   tasks:
-    - name: Ensure unzip is installed
+    - name: Install RV dependencies
       dnf:
-        name: unzip
+        name:
+          - unzip
+          - tcsh
+          - mesa-libGL
+          - mesa-libGLU
         state: present
 
     - name: Create RV installation directory
@@ -55,7 +59,6 @@
 
     - name: Run RV protocol handler installation
       command: "{{ rv_install_path }}/bin/rv.install_handler"
-      become: yes
       changed_when: true
       ignore_errors: yes
 
