@@ -32,17 +32,6 @@
         dest: "/tmp/"
         remote_src: yes
 
-    - name: Check extracted structure
-      find:
-        paths: "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
-        file_type: any
-        recurse: no
-      register: extracted_contents
-
-    - name: Display extracted structure
-      debug:
-        msg: "{{ extracted_contents.files | map(attribute='path') | list }}"
-
     - name: Find RV directory with bin folder
       find:
         paths: "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
@@ -97,23 +86,6 @@
           export PATH=$RV_HOME/bin:$PATH
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
 
-    - name: Clean up temporary files
-      file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
-        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
-
-    - name: Verify RV installation
-      stat:
-        path: "{{ rv_install_path }}/bin/rv"
-      register: rv_binary
-
-    - name: Display installation status
-      debug:
-        msg: "RV binary exists: {{ rv_binary.stat.exists }}"
-    
     - name: Create RV desktop entry for all users
       copy:
         dest: /usr/share/applications/autodesk-rv.desktop
@@ -133,3 +105,20 @@
     - name: Update desktop database
       command: update-desktop-database /usr/share/applications/
       changed_when: false
+
+    - name: Verify RV installation
+      stat:
+        path: "{{ rv_install_path }}/bin/rv"
+      register: rv_binary
+
+    - name: Display installation status
+      debug:
+        msg: "RV binary exists: {{ rv_binary.stat.exists }}"
+
+    - name: Clean up temporary files AFTER installation
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
+        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
