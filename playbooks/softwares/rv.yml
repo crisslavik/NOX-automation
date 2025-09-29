@@ -1,0 +1,85 @@
+---
+- name: Deploy Autodesk RV to AlmaLinux 9
+  hosts: all
+  become: yes
+  vars:
+    rv_source_zip: "/files/RV-Linux-Rocky9-Release-2025.0.0.zip"
+    rv_install_path: "/opt/RV"
+    rv_extracted_folder: "RV-Linux-Rocky9-Release-2025.0.0"
+  
+  tasks:
+    - name: Ensure unzip is installed
+      dnf:
+        name: unzip
+        state: present
+
+    - name: Create RV installation directory
+      file:
+        path: "{{ rv_install_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Copy RV zip file to target machine
+      copy:
+        src: "{{ rv_source_zip }}"
+        dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
+        mode: '0644'
+
+    - name: Extract RV zip file
+      unarchive:
+        src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
+        dest: "/tmp/"
+        remote_src: yes
+
+    - name: Move extracted RV contents to /opt/RV
+      shell: |
+        cp -r /tmp/{{ rv_extracted_folder }}/RV/* {{ rv_install_path }}/
+      args:
+        creates: "{{ rv_install_path }}/bin/rv"
+
+    - name: Set proper permissions on RV directory
+      file:
+        path: "{{ rv_install_path }}"
+        state: directory
+        recurse: yes
+        mode: 'u=rwX,g=rX,o=rX'
+        owner: root
+        group: root
+
+    - name: Ensure RV binaries are executable
+      file:
+        path: "{{ rv_install_path }}/bin"
+        state: directory
+        recurse: yes
+        mode: 'u=rwx,g=rx,o=rx'
+
+    - name: Create RV environment setup script
+      copy:
+        dest: /etc/profile.d/rv.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Autodesk RV Environment Setup
+          
+          export RV_HOME=/opt/RV
+          export PATH=$RV_HOME/bin:$PATH
+          export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
+
+    - name: Clean up temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
+        - "/tmp/{{ rv_extracted_folder }}"
+
+    - name: Verify RV installation
+      stat:
+        path: "{{ rv_install_path }}/bin/rv"
+      register: rv_binary
+
+    - name: Display installation status
+      debug:
+        msg: "RV binary exists: {{ rv_binary.stat.exists }}"
