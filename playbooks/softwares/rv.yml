@@ -113,3 +113,23 @@
     - name: Display installation status
       debug:
         msg: "RV binary exists: {{ rv_binary.stat.exists }}"
+    
+    - name: Create RV desktop entry for all users
+          copy:
+            dest: /usr/share/applications/autodesk-rv.desktop
+            mode: '0644'
+            content: |
+              [Desktop Entry]
+              Version=1.0
+              Type=Application
+              Name=Autodesk RV
+              Comment=Media review and playback software
+              Exec=/opt/RV/bin/rv
+              Icon=/opt/RV/resources/rv.png
+              Terminal=false
+              Categories=Graphics;Video;AudioVideo;
+              StartupNotify=true
+    
+        - name: Update desktop database
+          command: update-desktop-database /usr/share/applications/
+          changed_when: false
