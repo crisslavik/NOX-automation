@@ -1,11 +1,10 @@
 ---
-- name: Deploy Autodesk RV to AlmaLinux 9
+- name: Deploy Autodesk RV to Rocky Linux 9
   hosts: all
   become: yes
   vars:
     rv_source_zip: "files/RV-Linux-Rocky9-Release-2025.0.0.zip"
     rv_install_path: "/opt/RV"
-    rv_extracted_folder: "RV-Linux-Rocky9-Release-2025.0.0"
   
   tasks:
     - name: Ensure unzip is installed
@@ -27,17 +26,48 @@
         dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         mode: '0644'
 
-    - name: Extract RV zip file
+    - name: Extract RV zip file to temp directory
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         dest: "/tmp/"
         remote_src: yes
 
-    - name: Move extracted RV contents to /opt/RV
-      shell: |
-        cp -r /tmp/{{ rv_extracted_folder }}/RV/* {{ rv_install_path }}/
-      args:
-        creates: "{{ rv_install_path }}/bin/rv"
+    - name: Check extracted structure
+      find:
+        paths: "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
+        file_type: any
+        recurse: no
+      register: extracted_contents
+
+    - name: Display extracted structure
+      debug:
+        msg: "{{ extracted_contents.files | map(attribute='path') | list }}"
+
+    - name: Find RV directory with bin folder
+      find:
+        paths: "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
+        file_type: directory
+        patterns: "*"
+        recurse: yes
+      register: all_dirs
+
+    - name: Check for bin directory
+      stat:
+        path: "{{ item.path }}/bin"
+      loop: "{{ all_dirs.files }}"
+      register: bin_checks
+
+    - name: Identify RV root directory
+      set_fact:
+        rv_root: "{{ item.item.path }}"
+      when: item.stat.exists
+      loop: "{{ bin_checks.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Copy RV contents to /opt/RV
+      shell: "cp -r {{ rv_root }}/* {{ rv_install_path }}/"
+      when: rv_root is defined
 
     - name: Set proper permissions on RV directory
       file:
@@ -73,7 +103,7 @@
         state: absent
       loop:
         - "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
-        - "/tmp/{{ rv_extracted_folder }}"
+        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0"
 
     - name: Verify RV installation
       stat:
