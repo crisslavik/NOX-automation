@@ -53,6 +53,12 @@
         recurse: yes
         mode: 'u=rwx,g=rx,o=rx'
 
+    - name: Run RV protocol handler installation
+      command: "{{ rv_install_path }}/bin/rv.install_handler"
+      become: yes
+      changed_when: true
+      ignore_errors: yes
+
     - name: Create RV environment setup script
       copy:
         dest: /etc/profile.d/rv.sh
@@ -76,7 +82,7 @@
           Name=Autodesk RV
           Comment=Media review and playback software
           Exec=/opt/RV/bin/rv
-          Icon=/opt/RV/resources/rv.png
+          Icon=/opt/RV/resources/RV.ico
           Terminal=false
           Categories=Graphics;Video;AudioVideo;
           StartupNotify=true
