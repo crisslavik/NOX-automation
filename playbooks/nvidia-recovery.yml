@@ -1,0 +1,119 @@
+---
+# Emergency NVIDIA Recovery - Fix Login Screen Issues
+- name: NVIDIA Emergency Recovery
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Display recovery information
+      ansible.builtin.debug:
+        msg: |
+          🚨 NVIDIA EMERGENCY RECOVERY
+          
+          Target: {{ inventory_hostname }}
+          
+          This will:
+          1. Remove NVIDIA drivers safely
+          2. Restore default display drivers
+          3. Clean up conflicting configurations
+          4. Restore GDM/GNOME functionality
+          
+          ⚠️ System will reboot after recovery
+
+    - name: Stop display manager
+      ansible.builtin.systemd:
+        name: gdm
+        state: stopped
+      ignore_errors: yes
+
+    - name: Remove NVIDIA drivers
+      ansible.builtin.dnf:
+        name:
+          - nvidia-driver
+          - nvidia-driver-*
+          - nvidia-*
+          - cuda-*
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove NVIDIA X.Org configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/X11/xorg.conf
+        - /etc/X11/xorg.conf.d/10-nvidia.conf
+        - /etc/X11/xorg.conf.d/nvidia.conf
+      ignore_errors: yes
+
+    - name: Remove NVIDIA environment configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/profile.d/nvidia-cuda.sh
+        - /etc/profile.d/nvidia-almalinux.sh
+      ignore_errors: yes
+
+    - name: Install/Reinstall basic display drivers
+      ansible.builtin.dnf:
+        name:
+          - xorg-x11-drv-nouveau
+          - xorg-x11-server-Xorg
+          - xorg-x11-xinit
+          - mesa-dri-drivers
+        state: present
+
+    - name: Reinstall GDM
+      ansible.builtin.dnf:
+        name: gdm
+        state: present
+
+    - name: Enable and start GDM
+      ansible.builtin.systemd:
+        name: gdm
+        enabled: yes
+        state: started
+      ignore_errors: yes
+
+    - name: Create recovery verification script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          echo "=== NVIDIA Recovery Status ==="
+          echo
+          echo "NVIDIA Drivers:"
+          if rpm -qa | grep -q nvidia; then
+              echo "⚠️ NVIDIA packages still present:"
+              rpm -qa | grep nvidia
+          else
+              echo "✅ NVIDIA drivers removed"
+          fi
+          echo
+          echo "Display Drivers:"
+          if rpm -qa | grep -q nouveau; then
+              echo "✅ Nouveau (fallback) driver installed"
+          fi
+          echo
+          echo "GDM Status:"
+          systemctl status gdm | head -10
+        dest: /usr/local/bin/check-nvidia-recovery.sh
+        mode: '0755'
+
+    - name: Display recovery completion
+      ansible.builtin.debug:
+        msg: |
+          ✅ NVIDIA drivers removed
+          ✅ Display drivers restored
+          ✅ GDM restarted
+          
+          🔄 System should now allow login
+          
+          If still having issues, reboot:
+          ansible all -m reboot --limit {{ inventory_hostname }}
+
+    - name: Reboot system
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting after NVIDIA recovery"
