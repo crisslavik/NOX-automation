@@ -1,0 +1,30 @@
+---
+- name: Install NICE DCV prerequisites and dependencies
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Install EPEL repository
+      ansible.builtin.yum:
+        name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+        state: present
+        disable_gpg_check: yes
+
+    - name: Install X server and desktop environment packages
+      ansible.builtin.yum:
+        name:
+          - '@base-x'
+          - '@gnome-desktop'
+          - gdm
+          - glx-utils
+          - mesa-libGLU
+          - pulseaudio-utils
+          - xorg-x11-server-Xorg
+          - xorg-x11-utils
+          - xorg-x11-xinit
+        state: present
+
+    - name: Install DKMS for USB driver support
+      ansible.builtin.yum:
+        name: dkms
+        state: present
