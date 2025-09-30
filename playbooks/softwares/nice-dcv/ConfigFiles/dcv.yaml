@@ -1,0 +1,12 @@
+---
+- name: Configure dcv settings
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create the DCV pam.d file using a Jinja2 template
+      template:
+        src: dcv.j2
+        dest: /etc/pam.d/dcv
+        owner: root
+        group: root
+        mode: '0644'

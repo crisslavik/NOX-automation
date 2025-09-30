@@ -1,0 +1,32 @@
+---
+- name: Start and Enable the DCVServer Service
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure line 'After=network-online.target' is in dcvserver service unit file
+      lineinfile:
+        path: /usr/lib/systemd/system/dcvserver.service
+        insertafter: '^\[Unit\]'
+        line: 'After=network-online.target'
+
+    - name: Reload systemd manager configuration
+      shell: systemctl daemon-reload
+      become: true
+
+    - name: Restart dcvserver service
+      systemd:
+        name: dcvserver.service
+        state: restarted
+    - name: Enable dcvserver service
+      systemd:
+        name: dcvserver.service
+        enabled: yes
+        state: started
+      tags: dcv_enable
+
+    - name: Restart dcvserver service
+      systemd:
+        name: dcvserver.service
+        enabled: yes
+        state: restarted
+      tags: dcv_restart

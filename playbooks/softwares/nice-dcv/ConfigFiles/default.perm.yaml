@@ -1,0 +1,12 @@
+---
+- name: Configure dcv settings
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create the DCV default.perm file using a Jinja2 template
+      template:
+        src: default.perm.j2
+        dest: /etc/dcv/default.perm
+        owner: root
+        group: root
+        mode: '0644'

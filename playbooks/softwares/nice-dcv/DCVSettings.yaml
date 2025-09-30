@@ -1,0 +1,46 @@
+---
+- name: Apply DCV configuration settings
+  hosts: all
+  become: true
+  tasks:
+    # DCV Fix for SSSD
+    - name: Replace sssd.conf file
+      copy:
+        src: "../../Authentication_SSSD/sssd.conf"
+        dest: /etc/sssd/sssd.conf
+        mode: '0600'
+
+    - name: Restart sssd.service
+      systemd:
+        name: sssd.service
+        state: restarted
+
+    - name: Wait for sssd.service to start
+      pause:
+        seconds: 5
+
+    # Configure RLM License Server
+    - name: Create systemd override directory for dcvserver
+      file:
+        path: /etc/systemd/system/dcvserver.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Set RLM_LICENSE environment variable
+      copy:
+        dest: /etc/systemd/system/dcvserver.service.d/license.conf
+        content: |
+          [Service]
+          Environment="RLM_LICENSE=5053@license.ad.noxvfx.com"
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+- import_playbook: ../../X11/xorg.yaml
+- import_playbook: ../../GDM/GDM-KeyboardDelay.yaml
+- import_playbook: ConfigFiles/dcv-custom.yaml
+- import_playbook: ConfigFiles/dcv.yaml
+- import_playbook: ConfigFiles/default.perm.yaml
+- import_playbook: ConfigFiles/dcv.conf.yaml

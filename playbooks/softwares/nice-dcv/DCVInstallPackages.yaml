@@ -1,0 +1,19 @@
+---
+- name: Install RPM Packages
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install required RPM packages
+      dnf:
+        name: "{{ playbook_dir }}/Installer/{{ item }}"
+        state: present
+        disable_gpg_check: yes
+      loop:
+        - nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
+        - nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
+        - nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
+        - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
+        - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
+        - nice-dcv-session-manager-agent-2024.0.817-1.el9.x86_64.rpm
+        - nice-dcv-viewer-2024.0.8004-1.el9.x86_64.rpm
+      tags: dcv_install

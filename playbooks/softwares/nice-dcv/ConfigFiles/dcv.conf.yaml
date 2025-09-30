@@ -1,0 +1,12 @@
+---
+- name: Configure dcv.conf settings
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create the DCV configuration file using a Jinja2 template
+      template:
+        src: dcv.conf.j2
+        dest: /etc/dcv/dcv.conf
+        owner: root
+        group: root
+        mode: '0644'
