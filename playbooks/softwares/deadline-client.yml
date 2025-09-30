@@ -117,7 +117,7 @@
       when: install_result.changed
       tags: install
 
-    # STEP 4: Configure for Existing AD Users
+# STEP 4: Configure for Existing AD Users
     - name: Find all existing AD user home directories
       ansible.builtin.find:
         paths: "{{ ad_home_base }}"
@@ -126,12 +126,21 @@
       register: ad_user_homes
       tags: configure_users
 
+    - name: Get user information for AD users
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ item.path | basename }}"
+      loop: "{{ ad_user_homes.files }}"
+      register: user_info
+      failed_when: false
+      tags: configure_users
+
     - name: Create .deadline directory for existing AD users
       ansible.builtin.file:
         path: "{{ item.path }}/.deadline"
         state: directory
         owner: "{{ item.path | basename }}"
-        group: "{{ item.path | basename }}"
+        group: "{{ item.gid }}"
         mode: '0755'
       loop: "{{ ad_user_homes.files }}"
       tags: configure_users
@@ -140,7 +149,7 @@
       ansible.builtin.copy:
         dest: "{{ item.path }}/.deadline/deadline.ini"
         owner: "{{ item.path | basename }}"
-        group: "{{ item.path | basename }}"
+        group: "{{ item.gid }}"
         mode: '0644'
         content: |
           [ConnectionType]
