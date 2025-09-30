@@ -1,0 +1,103 @@
+---
+- name: Fix DCV License Server Configuration Format
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Stop DCV server
+      ansible.builtin.systemd:
+        name: dcvserver
+        state: stopped
+
+    - name: Test license server with rlmutil (if available)
+      ansible.builtin.shell:
+        cmd: |
+          if [ -f /usr/bin/rlmutil ]; then
+            /usr/bin/rlmutil rlmstat -c 5053@license
+          else
+            echo "rlmutil not found"
+          fi
+      register: rlm_test
+      failed_when: false
+      changed_when: false
+
+    - name: Display rlmutil test
+      ansible.builtin.debug:
+        msg: "{{ rlm_test.stdout_lines }}"
+
+    - name: Update DCV license configuration with full hostname
+      ansible.builtin.copy:
+        dest: /etc/dcv/dcv.conf
+        content: |
+          [license]
+          license-file="5053@license.ad.noxvfx.com"
+
+          [security]
+          authentication="system"
+
+          [display]
+          target-fps=30
+
+          [display/linux]
+          gl-displays=[":0.0"]
+          use-glx-fallback-provider=true
+
+          [session-management]
+          create-session=true
+
+          [session-management/defaults]
+          permissions-file="/etc/dcv/dcv_permissions.conf"
+
+          [session-management/automatic-console-session]
+          owner="root"
+          storage-root="/var/run/dcv/session-storage"
+
+          [connectivity]
+          enable-quic-frontend=true
+        mode: '0644'
+
+    - name: Start DCV server
+      ansible.builtin.systemd:
+        name: dcvserver
+        state: started
+
+    - name: Wait for DCV to start
+      ansible.builtin.wait_for:
+        port: 8443
+        delay: 5
+        timeout: 60
+
+    - name: Wait for initialization
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Try to create console session with new license config
+      ansible.builtin.shell:
+        cmd: DISPLAY=:0 dcv create-session --type=console --owner root console
+      register: session_create
+      failed_when: false
+      changed_when: false
+
+    - name: Display session creation result
+      ansible.builtin.debug:
+        msg: "{{ session_create }}"
+
+    - name: Check DCV logs for license errors
+      ansible.builtin.command:
+        cmd: journalctl -u dcvserver -n 20 --no-pager
+      register: dcv_logs
+      changed_when: false
+
+    - name: Display recent DCV logs
+      ansible.builtin.debug:
+        msg: "{{ dcv_logs.stdout_lines }}"
+
+    - name: List active sessions
+      ansible.builtin.command:
+        cmd: dcv list-sessions
+      register: sessions
+      changed_when: false
+
+    - name: Display sessions
+      ansible.builtin.debug:
+        msg: "{{ sessions.stdout_lines if sessions.stdout_lines else 'No sessions available' }}"
