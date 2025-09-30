@@ -1,0 +1,80 @@
+---
+- name: Configure DCV with RLM_LICENSE Environment Variable
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Create systemd override directory for dcvserver
+      ansible.builtin.file:
+        path: /etc/systemd/system/dcvserver.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Create systemd override to set RLM_LICENSE environment variable
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dcvserver.service.d/license.conf
+        content: |
+          [Service]
+          Environment="RLM_LICENSE=5053@license.ad.noxvfx.com"
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Restart DCV server with new environment
+      ansible.builtin.systemd:
+        name: dcvserver
+        state: restarted
+
+    - name: Wait for DCV to start
+      ansible.builtin.wait_for:
+        port: 8443
+        delay: 5
+        timeout: 60
+
+    - name: Wait for initialization
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Try to create console session with environment variable set
+      ansible.builtin.shell:
+        cmd: DISPLAY=:0 dcv create-session --type=console --owner root console
+      register: session_create
+      failed_when: false
+      changed_when: false
+
+    - name: Display session creation result
+      ansible.builtin.debug:
+        msg: "{{ session_create }}"
+
+    - name: List sessions
+      ansible.builtin.command:
+        cmd: dcv list-sessions
+      register: sessions
+      changed_when: false
+
+    - name: Display active sessions
+      ansible.builtin.debug:
+        msg: "{{ sessions.stdout_lines if sessions.stdout_lines else 'No sessions' }}"
+
+    - name: Check DCV logs
+      ansible.builtin.command:
+        cmd: journalctl -u dcvserver -n 30 --no-pager
+      register: logs
+      changed_when: false
+
+    - name: Display logs
+      ansible.builtin.debug:
+        msg: "{{ logs.stdout_lines }}"
+
+    - name: Final status
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "DCV License Configuration Updated"
+          - "=========================================="
+          - "RLM_LICENSE environment variable set"
+          - "License server: 5053@license.ad.noxvfx.com"
+          - "DCV should now be able to acquire licenses"
+          - "=========================================="
