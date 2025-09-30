@@ -1,0 +1,48 @@
+---
+- name: Test Direct Connection to NICE ISV Port
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Test connectivity to ISV port 40457
+      ansible.builtin.shell:
+        cmd: |
+          echo "Testing port 40457..."
+          nc -zv license.ad.noxvfx.com 40457 2>&1
+          echo "Exit code: $?"
+          echo "---"
+          echo "Testing with telnet..."
+          timeout 3 telnet license.ad.noxvfx.com 40457 2>&1 || echo "Telnet timeout/failed"
+      register: port_test
+      failed_when: false
+      changed_when: false
+
+    - name: Display port test
+      ansible.builtin.debug:
+        msg: "{{ port_test.stdout_lines }}"
+
+    - name: Check firewall on compute nodes
+      ansible.builtin.command:
+        cmd: firewall-cmd --list-all
+      register: fw_status
+      changed_when: false
+
+    - name: Display firewall status
+      ansible.builtin.debug:
+        msg: "{{ fw_status.stdout_lines }}"
+
+    - name: Diagnostic summary
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "DIAGNOSTIC RESULTS"
+          - "=========================================="
+          - "If port 40457 is NOT reachable, the issue is:"
+          - "  - Firewall on LICENSE SERVER blocking 40457"
+          - "  - Network ACL blocking the port"
+          - ""
+          - "ACTION REQUIRED ON LICENSE SERVER:"
+          - "1. Check firewall: firewall-cmd --list-ports"
+          - "2. Open port: firewall-cmd --permanent --add-port=40457/tcp"
+          - "3. Reload: firewall-cmd --reload"
+          - "=========================================="
