@@ -38,6 +38,27 @@
       ansible.builtin.file:
         path: "/tmp/{{ daselement_rpm_file }}"
         state: absent
+    
+    - name: Create system-wide das-element defaults directory
+      ansible.builtin.file:
+        path: /etc/skel/.das-element
+        state: directory
+        mode: '0755'
+        
+    - name: Create default variables.env in /etc/skel for new users
+      ansible.builtin.copy:
+        dest: /etc/skel/.das-element/variables.env
+        mode: '0644'
+        force: yes
+        content: |
+          #### point to the license server
+          DASELEMENT_LICENSE={{ daselement_license_server }}
+          
+          #### path to the config file (.conf)
+          DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+          
+          #### path to the resources folder, for presets, hooks, etc.
+          DASELEMENT_RESOURCES={{ daselement_resources_path }}
         
     - name: Find all user home directories (including AD users)
       ansible.builtin.find:
@@ -54,7 +75,7 @@
       loop: "{{ home_directories.files }}"
       register: das_element_dirs
       
-    - name: Overwrite variables.env file with environment variables for all users
+    - name: Overwrite variables.env file with environment variables for existing users
       ansible.builtin.copy:
         dest: "{{ item.item.path }}/.das-element/variables.env"
         owner: "{{ item.item.path | basename }}"
