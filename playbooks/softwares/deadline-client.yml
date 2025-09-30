@@ -1,0 +1,206 @@
+---
+- name: Install Thinkbox Deadline 10.4.2.2 Client
+  hosts: all
+  become: yes
+  vars:
+    deadline_version: "10.4.2.2"
+    deadline_installer: "DeadlineClient-{{ deadline_version }}-linux-x64-installer.run"
+    deadline_install_path: "/opt/Thinkbox/Deadline10"
+    deadline_repo_path: "/mnt/Library/_deadlinerepo/repository"
+    rcs_server: "192.168.11.16"
+    rcs_port: "4433"
+    client_cert_path: "/mnt/Library/_deadlinerepo/certs/Deadline10RemoteClient.pfx"
+    client_cert_password: "N0Xdeadline"
+    ad_home_base: "/home/ad.noxvfx.com"
+    
+  tasks:
+    # STEP 1: Install Dependencies
+    - name: Install required dependencies for Deadline Client
+      ansible.builtin.dnf:
+        name:
+          - redhat-lsb-core
+          - libX11
+          - libXext
+          - mesa-libGL
+          - mesa-libGLU
+          - nfs-utils
+        state: present
+      tags: dependencies
+
+    # STEP 2: Repository and Installer Setup
+    - name: Ensure repository mount point exists
+      ansible.builtin.file:
+        path: "{{ deadline_repo_path }}"
+        state: directory
+        mode: '0755'
+      tags: repository
+
+    - name: Check if repository is already mounted
+      ansible.builtin.shell: mountpoint -q {{ deadline_repo_path }}
+      register: repo_mounted
+      failed_when: false
+      changed_when: false
+      tags: repository
+
+    - name: Mount repository if not already mounted
+      ansible.builtin.mount:
+        path: "{{ deadline_repo_path }}"
+        src: "{{ rcs_server }}:{{ deadline_repo_path }}"
+        fstype: nfs
+        opts: rw,hard,intr
+        state: mounted
+      when: repo_mounted.rc != 0
+      tags: repository
+
+    - name: Create temporary directory for installer
+      ansible.builtin.file:
+        path: /tmp/deadline_install
+        state: directory
+        mode: '0755'
+      tags: installer
+
+    - name: Copy Deadline installer to target
+      ansible.builtin.copy:
+        src: "../../files/{{ deadline_installer }}"
+        dest: "/tmp/deadline_install/{{ deadline_installer }}"
+        mode: '0755'
+      tags: installer
+
+    - name: Verify client certificate exists on repository
+      ansible.builtin.stat:
+        path: "{{ client_cert_path }}"
+      register: cert_file
+      failed_when: not cert_file.stat.exists
+      tags: certificates
+
+    # STEP 3: Silent Installation
+    - name: Check if Deadline is already installed
+      ansible.builtin.stat:
+        path: "{{ deadline_install_path }}"
+      register: deadline_installed
+      tags: install
+
+    - name: Install Deadline Client in silent mode
+      ansible.builtin.command:
+        cmd: >
+          /tmp/deadline_install/{{ deadline_installer }}
+          --mode unattended
+          --prefix {{ deadline_install_path }}
+          --connectiontype Remote
+          --proxyrootdir {{ rcs_server }}:{{ rcs_port }}
+          --proxycertificate {{ client_cert_path }}
+          --proxycertificatepassword {{ client_cert_password }}
+          --slavestartup true
+          --launcherstartup true
+          --launcherdaemon true
+          --daemonuser root
+          --blockautoupdateoverride Blocked
+          --installer-language en
+      args:
+        creates: "{{ deadline_install_path }}/bin/deadlinecommand"
+      when: not deadline_installed.stat.exists
+      tags: install
+      register: install_result
+
+    - name: Display installation result
+      ansible.builtin.debug:
+        var: install_result
+      when: install_result.changed
+      tags: install
+
+    # STEP 4: Configure for Existing AD Users
+    - name: Find all existing AD user home directories
+      ansible.builtin.find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_user_homes
+      tags: configure_users
+
+    - name: Create .deadline directory for existing AD users
+      ansible.builtin.file:
+        path: "{{ item.path }}/.deadline"
+        state: directory
+        owner: "{{ item.path | basename }}"
+        group: "{{ item.path | basename }}"
+        mode: '0755'
+      loop: "{{ ad_user_homes.files }}"
+      tags: configure_users
+
+    - name: Configure deadline.ini for existing AD users
+      ansible.builtin.copy:
+        dest: "{{ item.path }}/.deadline/deadline.ini"
+        owner: "{{ item.path | basename }}"
+        group: "{{ item.path | basename }}"
+        mode: '0644'
+        content: |
+          [ConnectionType]
+          Type=Remote
+          [Proxy]
+          Root={{ rcs_server }}:{{ rcs_port }}
+          SSLCertificate={{ client_cert_path }}
+          [AutoConfiguration]
+          Enabled=True
+      loop: "{{ ad_user_homes.files }}"
+      tags: configure_users
+
+    # STEP 5: Configure for Future AD Users (/etc/skel/)
+    - name: Create .deadline directory in /etc/skel
+      ansible.builtin.file:
+        path: /etc/skel/.deadline
+        state: directory
+        mode: '0755'
+      tags: configure_skel
+
+    - name: Configure deadline.ini in /etc/skel for future users
+      ansible.builtin.copy:
+        dest: /etc/skel/.deadline/deadline.ini
+        mode: '0644'
+        content: |
+          [ConnectionType]
+          Type=Remote
+          [Proxy]
+          Root={{ rcs_server }}:{{ rcs_port }}
+          SSLCertificate={{ client_cert_path }}
+          [AutoConfiguration]
+          Enabled=True
+      tags: configure_skel
+
+    # STEP 6: Configure Deadline Environment
+    - name: Add Deadline to system PATH
+      ansible.builtin.copy:
+        dest: /etc/profile.d/deadline.sh
+        mode: '0644'
+        content: |
+          export DEADLINE_PATH={{ deadline_install_path }}
+          export PATH=$PATH:{{ deadline_install_path }}/bin
+      tags: environment
+
+    - name: Verify Deadline installation
+      ansible.builtin.command: "{{ deadline_install_path }}/bin/deadlinecommand --version"
+      register: deadline_version_check
+      changed_when: false
+      tags: verify
+
+    - name: Display Deadline version
+      ansible.builtin.debug:
+        msg: "Deadline installed successfully: {{ deadline_version_check.stdout }}"
+      tags: verify
+
+    # STEP 7: Cleanup
+    - name: Remove temporary installer files
+      ansible.builtin.file:
+        path: /tmp/deadline_install
+        state: absent
+      tags: cleanup
+
+    - name: Installation complete message
+      ansible.builtin.debug:
+        msg: |
+          Deadline {{ deadline_version }} installation completed successfully!
+          - Installation path: {{ deadline_install_path }}
+          - Repository: {{ deadline_repo_path }}
+          - RCS Server: {{ rcs_server }}:{{ rcs_port }}
+          - Configured for existing AD users in {{ ad_home_base }}
+          - Configured for future users via /etc/skel
+      tags: always
