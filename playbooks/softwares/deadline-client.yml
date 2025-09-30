@@ -42,12 +42,26 @@
         state: present
       tags: dependencies
 
-    # STEP 2: Repository and Installer Setup
-    - name: Ensure repository mount point exists
+  # STEP 2: Repository and Installer Setup
+    - name: Create parent directories for repository mount
+      ansible.builtin.file:
+        path: /mnt/Library/_deadlinerepo
+        state: directory
+        mode: '0755'
+      tags: repository
+
+    - name: Check if repository directory exists
+      ansible.builtin.stat:
+        path: "{{ deadline_repo_path }}"
+      register: repo_dir
+      tags: repository
+
+    - name: Create repository mount point if it doesn't exist
       ansible.builtin.file:
         path: "{{ deadline_repo_path }}"
         state: directory
         mode: '0755'
+      when: not repo_dir.stat.exists
       tags: repository
 
     - name: Check if repository is already mounted
