@@ -1,0 +1,89 @@
+---
+- name: Diagnose RLM License Server Communication
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Check what's actually listening on license server port 5053
+      ansible.builtin.shell:
+        cmd: |
+          echo "Testing raw connection to license server..."
+          timeout 2 bash -c 'cat < /dev/tcp/license.ad.noxvfx.com/5053' 2>&1 || echo "Connection test failed"
+          echo "---"
+          echo "Checking if ISV port is needed..."
+          nmap -p 5053-5063 license.ad.noxvfx.com 2>/dev/null || echo "nmap not available"
+      register: license_comm
+      failed_when: false
+      changed_when: false
+
+    - name: Display communication test
+      ansible.builtin.debug:
+        msg: "{{ license_comm.stdout_lines }}"
+
+    - name: Verify systemd environment was set
+      ansible.builtin.command:
+        cmd: systemctl show dcvserver --property=Environment
+      register: env_check
+      changed_when: false
+
+    - name: Display DCV environment
+      ansible.builtin.debug:
+        msg: "{{ env_check.stdout }}"
+
+    - name: Try manual RLM query if rlmutil exists
+      ansible.builtin.shell:
+        cmd: |
+          export RLM_LICENSE=5053@license.ad.noxvfx.com
+          if command -v rlmutil &> /dev/null; then
+            rlmutil rlmstat -a -c $RLM_LICENSE
+          else
+            echo "rlmutil not found on this system"
+          fi
+      register: rlm_query
+      failed_when: false
+      changed_when: false
+
+    - name: Display RLM query result
+      ansible.builtin.debug:
+        msg: "{{ rlm_query.stdout_lines }}"
+
+    - name: Check if DCV has dcvlmutil
+      ansible.builtin.shell:
+        cmd: |
+          export RLM_LICENSE=5053@license.ad.noxvfx.com
+          if [ -f /usr/bin/dcvlmutil ]; then
+            /usr/bin/dcvlmutil rlmstat -c $RLM_LICENSE
+          else
+            echo "dcvlmutil not found"
+          fi
+      register: dcvlm_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display dcvlmutil result
+      ansible.builtin.debug:
+        msg: "{{ dcvlm_check }}"
+
+    - name: Action required message
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "LICENSE SERVER TROUBLESHOOTING NEEDED"
+          - "=========================================="
+          - "The compute nodes CAN reach port 5053 on license server,"
+          - "but DCV cannot communicate with the RLM license server."
+          - ""
+          - "POSSIBLE CAUSES:"
+          - "1. RLM server is not running on 'license' host"
+          - "2. NICE DCV ISV daemon is not configured in RLM"
+          - "3. Wrong port - RLM might need ISV port (usually 5054+)"
+          - "4. License file doesn't have correct SERVER line"
+          - ""
+          - "NEXT STEPS - Check on license server:"
+          - "1. SSH to license server: ssh root@license"
+          - "2. Check RLM process: ps aux | grep rlm"
+          - "3. Check RLM status: systemctl status rlm (or your RLM service name)"
+          - "4. Check license file: cat /path/to/nice-dcv.lic"
+          - "5. Look for SERVER line like: SERVER license ANY 5053"
+          - "6. Look for ISV line like: ISV nice /path/to/nice port=5054"
+          - "=========================================="
