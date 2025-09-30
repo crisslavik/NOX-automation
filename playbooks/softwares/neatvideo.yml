@@ -1,0 +1,204 @@
+---
+- name: Install NeatVideo OFX Plugin on AlmaLinux 9.6
+  hosts: all
+  become: yes
+  
+  vars:
+    neatvideo_version: "5"
+    neatvideo_installer: "NeatVideo5OFX.Studio.Intel64.run"
+    neatvideo_tarball: "NeatVideo-5-Linux.tar.gz"
+    neatvideo_source_path: "../../files/{{ neatvideo_tarball }}"
+    
+    # Installation paths
+    install_base: "/usr/local/Neat Video v5 OFX"
+    ofx_plugin_path: "/usr/OFX/Plugins"
+    
+    # AD user settings
+    ad_domain: "ad.noxvfx.com"
+    ad_home_base: "/home/{{ ad_domain }}"
+    skel_path: "/etc/skel"
+    
+    # License settings
+    license_type: "studio"
+    license_server: "5053@license"
+    
+    # Plugin configuration paths
+    neatvideo_config_dir: ".neatvideo"
+    neatvideo_temp_base: "/var/tmp/neatvideo"
+
+  tasks:
+    # ========================================
+    # STEP 1: Extract and Install
+    # ========================================
+    - name: Create temporary extraction directory
+      file:
+        path: /tmp/neatvideo_install
+        state: directory
+        mode: '0755'
+
+    - name: Extract NeatVideo tarball
+      unarchive:
+        src: "{{ neatvideo_source_path }}"
+        dest: /tmp/neatvideo_install
+        remote_src: no
+
+    - name: Find the installer file
+      find:
+        paths: /tmp/neatvideo_install
+        patterns: "{{ neatvideo_installer }}"
+        recurse: yes
+      register: installer_file
+
+    - name: Make installer executable
+      file:
+        path: "{{ installer_file.files[0].path }}"
+        mode: '0755'
+      when: installer_file.matched > 0
+
+    - name: Run NeatVideo installer (silent mode)
+      command: "{{ installer_file.files[0].path }}"
+      args:
+        creates: "{{ install_base }}"
+      when: installer_file.matched > 0
+
+    - name: Verify OFX plugin installation
+      stat:
+        path: "{{ ofx_plugin_path }}"
+      register: ofx_check
+
+    - name: Display installation status
+      debug:
+        msg: "NeatVideo OFX plugin installed at {{ ofx_plugin_path }}"
+      when: ofx_check.stat.exists
+
+    # ========================================
+    # STEP 2: Configure License
+    # ========================================
+    - name: Configure NeatVideo floating license - system-wide
+      lineinfile:
+        path: /etc/environment
+        regexp: '^NEATVIDEO_LICENSE='
+        line: 'NEATVIDEO_LICENSE={{ license_server }}'
+        create: yes
+        mode: '0644'
+
+    - name: Configure NeatVideo license for /etc/profile.d (all users)
+      copy:
+        content: |
+          export NEATVIDEO_LICENSE={{ license_server }}
+        dest: /etc/profile.d/neatvideo.sh
+        mode: '0644'
+
+    - name: Configure NeatVideo license in /etc/skel/.bashrc (new AD users)
+      lineinfile:
+        path: "{{ skel_path }}/.bashrc"
+        regexp: '^export NEATVIDEO_LICENSE='
+        line: 'export NEATVIDEO_LICENSE={{ license_server }}'
+        create: yes
+        mode: '0644'
+
+    - name: Get list of existing AD users (UID > 400000000)
+      shell: |
+        getent passwd | awk -F: '$3 > 400000000 {print $1":"$6}'
+      register: ad_users
+      changed_when: false
+
+    - name: Configure NeatVideo license for existing AD users
+      lineinfile:
+        path: "{{ item.split(':')[1] }}/.bashrc"
+        regexp: '^export NEATVIDEO_LICENSE='
+        line: 'export NEATVIDEO_LICENSE={{ license_server }}'
+        create: yes
+        mode: '0644'
+        owner: "{{ item.split(':')[0] }}"
+        group: "{{ item.split(':')[0] }}"
+      loop: "{{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
+
+    # ========================================
+    # STEP 3: Configure Plugin Preferences
+    # ========================================
+    - name: Create NeatVideo config directory in /etc/skel
+      file:
+        path: "{{ skel_path }}/{{ neatvideo_config_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create NeatVideo config directories for existing AD users
+      file:
+        path: "{{ item.split(':')[1] }}/{{ neatvideo_config_dir }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ item.split(':')[0] }}"
+        group: "{{ item.split(':')[0] }}"
+      loop: "{{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
+
+    # ========================================
+    # STEP 4: Configure Temporary Files
+    # ========================================
+    - name: Create global NeatVideo temp directory
+      file:
+        path: "{{ neatvideo_temp_base }}"
+        state: directory
+        mode: '1777'  # Sticky bit + world writable (like /tmp)
+
+    - name: Create NeatVideo preferences file in /etc/skel
+      copy:
+        content: |
+          # NeatVideo Preferences
+          TempFolder={{ neatvideo_temp_base }}/$USER
+        dest: "{{ skel_path }}/{{ neatvideo_config_dir }}/preferences.txt"
+        mode: '0644'
+
+    - name: Create user-specific temp directories for existing AD users
+      file:
+        path: "{{ neatvideo_temp_base }}/{{ item.split(':')[0] }}"
+        state: directory
+        mode: '0700'
+        owner: "{{ item.split(':')[0] }}"
+        group: "{{ item.split(':')[0] }}"
+      loop: "{{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
+
+    - name: Create NeatVideo preferences file for existing AD users
+      copy:
+        content: |
+          # NeatVideo Preferences
+          TempFolder={{ neatvideo_temp_base }}/{{ item.split(':')[0] }}
+        dest: "{{ item.split(':')[1] }}/{{ neatvideo_config_dir }}/preferences.txt"
+        mode: '0644'
+        owner: "{{ item.split(':')[0] }}"
+        group: "{{ item.split(':')[0] }}"
+      loop: "{{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
+
+    # ========================================
+    # STEP 5: Cleanup
+    # ========================================
+    - name: Clean up temporary installation directory
+      file:
+        path: /tmp/neatvideo_install
+        state: absent
+
+    # ========================================
+    # STEP 6: Verification
+    # ========================================
+    - name: Display installation summary
+      debug:
+        msg:
+          - "========================================="
+          - "NeatVideo Installation Complete"
+          - "========================================="
+          - "Plugin installed: {{ ofx_plugin_path }}"
+          - "License server: {{ license_server }}"
+          - "Config directory: ~/{{ neatvideo_config_dir }}"
+          - "Temp directory: {{ neatvideo_temp_base }}/$USER"
+          - "========================================="
+          - "Host applications supported:"
+          - "  - Nuke (commercial versions)"
+          - "  - Fusion Studio"
+          - "  - Flame"
+          - "  - Baselight"
+          - "  - And other OFX hosts"
+          - "========================================="
