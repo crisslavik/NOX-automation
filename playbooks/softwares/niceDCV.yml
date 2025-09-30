@@ -1,5 +1,5 @@
 ---
-- name: NICE DCV Installation - Steps 1-3
+- name: NICE DCV Installation - Steps 1-4
   hosts: all
   become: yes
   
@@ -109,15 +109,31 @@
         state: present
         disable_gpg_check: no
 
-    - name: Install DCV USB drivers (with timeout)
-      ansible.builtin.command:
-        cmd: dcvusbdriverinstaller --quiet
-      async: 60
-      poll: 5
-      register: usb_driver_install
-      failed_when: false
-      changed_when: usb_driver_install.rc == 0
+    # STEP 4: Configure Firewall
+    - name: Ensure firewalld is installed
+      ansible.builtin.yum:
+        name: firewalld
+        state: present
 
-    - name: Display USB driver installation result
+    - name: Start and enable firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Open DCV port 8443/tcp in firewall
+      ansible.builtin.firewalld:
+        port: 8443/tcp
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+    - name: Verify firewall rule for DCV
+      ansible.builtin.command:
+        cmd: firewall-cmd --list-ports
+      register: firewall_ports
+      changed_when: false
+
+    - name: Display firewall ports
       ansible.builtin.debug:
-        msg: "USB drivers installation: {{ 'Success' if usb_driver_install.rc == 0 else 'Skipped or failed (non-critical)' }}"
+        msg: "Open ports: {{ firewall_ports.stdout }}"
