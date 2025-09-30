@@ -1,0 +1,95 @@
+---
+- name: Install DasElement Full on AlmaLinux 9.6 (Supervisors only)
+  hosts: supervisors
+  become: yes
+  
+  vars:
+    # DasElement Full version (NOT lite version)
+    daselement_version: "2.1.4"
+    daselement_package_name: "das-element"
+    daselement_rpm_file: "{{ daselement_package_name }}_{{ daselement_version }}_lin.rpm"
+    daselement_rpm_path: "../../files/{{ daselement_rpm_file }}"
+    daselement_install_path: "/opt/{{ daselement_package_name }}-{{ daselement_version }}"
+    
+    # Environment variables
+    daselement_license_server: "5053@license"
+    daselement_config_path: "/mnt/Library/_daselement/das-element.conf"
+    daselement_resources_path: "/mnt/Library/_daselement/resources"
+    
+  tasks:
+    - name: Install libXScrnSaver dependency
+      ansible.builtin.yum:
+        name: libXScrnSaver
+        state: present
+        
+    - name: Copy DasElement Full RPM to target machine
+      ansible.builtin.copy:
+        src: "{{ daselement_rpm_path }}"
+        dest: "/tmp/{{ daselement_rpm_file }}"
+        mode: '0644'
+        
+    - name: Install DasElement Full RPM
+      ansible.builtin.yum:
+        name: "/tmp/{{ daselement_rpm_file }}"
+        state: present
+        disable_gpg_check: yes
+        
+    - name: Clean up temporary RPM file
+      ansible.builtin.file:
+        path: "/tmp/{{ daselement_rpm_file }}"
+        state: absent
+    
+    - name: Create system-wide das-element defaults directory
+      ansible.builtin.file:
+        path: /etc/skel/.das-element
+        state: directory
+        mode: '0755'
+        
+    - name: Create default variables.env in /etc/skel for new users
+      ansible.builtin.copy:
+        dest: /etc/skel/.das-element/variables.env
+        mode: '0644'
+        force: yes
+        content: |
+          #### point to the license server
+          DASELEMENT_LICENSE={{ daselement_license_server }}
+          
+          #### path to the config file (.conf)
+          DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+          
+          #### path to the resources folder, for presets, hooks, etc.
+          DASELEMENT_RESOURCES={{ daselement_resources_path }}
+        
+    - name: Find all user home directories (including AD users)
+      ansible.builtin.find:
+        paths:
+          - /home
+          - /home/ad.noxvfx.com
+        file_type: directory
+        recurse: no
+      register: home_directories
+      
+    - name: Filter valid home directories with .das-element folder
+      ansible.builtin.stat:
+        path: "{{ item.path }}/.das-element"
+      loop: "{{ home_directories.files }}"
+      register: das_element_dirs
+      
+    - name: Overwrite variables.env file with environment variables for existing users
+      ansible.builtin.copy:
+        dest: "{{ item.item.path }}/.das-element/variables.env"
+        owner: "{{ item.item.path | basename }}"
+        group: "{{ item.item.path | basename }}"
+        mode: '0644'
+        force: yes
+        content: |
+          #### point to the license server
+          DASELEMENT_LICENSE={{ daselement_license_server }}
+          
+          #### path to the config file (.conf)
+          DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+          
+          #### path to the resources folder, for presets, hooks, etc.
+          DASELEMENT_RESOURCES={{ daselement_resources_path }}
+      loop: "{{ das_element_dirs.results }}"
+      when: item.stat.exists and item.stat.isdir
