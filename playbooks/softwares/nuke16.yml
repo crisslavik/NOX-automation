@@ -140,7 +140,7 @@
           Categories=Graphics;2DGraphics;VFX;
           MimeType=application/x-nuke;
 
-    # Step 6: Deploy Desktop Icons to Existing AD Users
+    # Step 6: Deploy Desktop Icons to Existing AD Users (FIXED)
     - name: Find all existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -153,8 +153,8 @@
         path: "{{ item.path }}/.local/share/applications"
         state: directory
         mode: '0755'
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.path | basename }}"
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files | length > 0
 
@@ -164,8 +164,8 @@
         dest: "{{ item.path }}/.local/share/applications/nuke{{ nuke_version }}.desktop"
         remote_src: yes
         mode: '0644'
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.path | basename }}"
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files | length > 0
 
@@ -175,8 +175,8 @@
         dest: "{{ item.path }}/.local/share/applications/nukex{{ nuke_version }}.desktop"
         remote_src: yes
         mode: '0644'
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.path | basename }}"
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files | length > 0
 
@@ -186,8 +186,8 @@
         dest: "{{ item.path }}/.local/share/applications/nukestudio{{ nuke_version }}.desktop"
         remote_src: yes
         mode: '0644'
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.path | basename }}"
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files | length > 0
 
