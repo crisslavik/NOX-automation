@@ -1,0 +1,66 @@
+---
+- name: Install DasElement Lite on AlmaLinux 9.6
+  hosts: all
+  become: yes
+  
+  vars:
+    # DasElement Lite version (NOT full das-element)
+    daselement_lite_version: "2.1.4"
+    daselement_package_name: "das-element-lite"
+    daselement_rpm_file: "{{ daselement_package_name }}_{{ daselement_lite_version }}_lin.rpm"
+    daselement_rpm_path: "../../files/{{ daselement_rpm_file }}"
+    daselement_install_path: "/opt/{{ daselement_package_name }}-{{ daselement_lite_version }}"
+    
+    # Environment variables
+    daselement_license_server: "5053@license"
+    daselement_config_path: "/mnt/Library/_daselement/das-element.conf"
+    daselement_resources_path: "/mnt/Library/_daselement/resources"
+    
+  tasks:
+    - name: Install libXScrnSaver dependency
+      ansible.builtin.yum:
+        name: libXScrnSaver
+        state: present
+        
+    - name: Copy DasElement Lite RPM to target machine
+      ansible.builtin.copy:
+        src: "{{ daselement_rpm_path }}"
+        dest: "/tmp/{{ daselement_rpm_file }}"
+        mode: '0644'
+        
+    - name: Install DasElement Lite RPM
+      ansible.builtin.yum:
+        name: "/tmp/{{ daselement_rpm_file }}"
+        state: present
+        disable_gpg_check: yes
+        
+    - name: Create .das-element directory in user home directories
+      ansible.builtin.file:
+        path: "{{ item }}/.das-element"
+        state: directory
+        mode: '0755'
+        owner: "{{ item | basename }}"
+      with_fileglob:
+        - "/home/*"
+        
+    - name: Create variables.env file with environment variables
+      ansible.builtin.copy:
+        dest: "{{ item }}/.das-element/variables.env"
+        owner: "{{ item | basename }}"
+        mode: '0644'
+        content: |
+          #### point to the license server
+          DASELEMENT_LICENSE={{ daselement_license_server }}
+          
+          #### path to the config file (.conf)
+          DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+          
+          #### path to the resources folder, for presets, hooks, etc.
+          DASELEMENT_RESOURCES={{ daselement_resources_path }}
+      with_fileglob:
+        - "/home/*"
+        
+    - name: Clean up temporary RPM file
+      ansible.builtin.file:
+        path: "/tmp/{{ daselement_rpm_file }}"
+        state: absent
