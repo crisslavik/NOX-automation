@@ -1,6 +1,6 @@
 ---
 - name: Install DasElement Full on AlmaLinux 9.6 (Supervisors only)
-  hosts: supervisors
+  hosts: all
   become: yes
   
   vars:
