@@ -34,20 +34,17 @@
         state: present
         disable_gpg_check: yes
         
-    - name: Create .das-element directory in user home directories
+    - name: Clean up temporary RPM file
       ansible.builtin.file:
-        path: "{{ item }}/.das-element"
-        state: directory
-        mode: '0755'
-        owner: "{{ item | basename }}"
-      with_fileglob:
-        - "/home/*"
+        path: "/tmp/{{ daselement_rpm_file }}"
+        state: absent
         
-    - name: Create variables.env file with environment variables
+    - name: Overwrite variables.env file with environment variables for all users
       ansible.builtin.copy:
         dest: "{{ item }}/.das-element/variables.env"
         owner: "{{ item | basename }}"
         mode: '0644'
+        force: yes
         content: |
           #### point to the license server
           DASELEMENT_LICENSE={{ daselement_license_server }}
@@ -59,8 +56,3 @@
           DASELEMENT_RESOURCES={{ daselement_resources_path }}
       with_fileglob:
         - "/home/*"
-        
-    - name: Clean up temporary RPM file
-      ansible.builtin.file:
-        path: "/tmp/{{ daselement_rpm_file }}"
-        state: absent
