@@ -39,10 +39,16 @@
         path: "/tmp/{{ daselement_rpm_file }}"
         state: absent
         
+    - name: Get list of home directories for real users
+      ansible.builtin.shell: |
+        getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $6}'
+      register: user_home_dirs
+      changed_when: false
+      
     - name: Overwrite variables.env file with environment variables for all users
       ansible.builtin.copy:
         dest: "{{ item }}/.das-element/variables.env"
-        owner: "{{ item | basename }}"
+        owner: "{{ item.split('/')[-1] }}"
         mode: '0644'
         force: yes
         content: |
@@ -54,5 +60,5 @@
           
           #### path to the resources folder, for presets, hooks, etc.
           DASELEMENT_RESOURCES={{ daselement_resources_path }}
-      with_fileglob:
-        - "/home/*"
+      loop: "{{ user_home_dirs.stdout_lines }}"
+      when: user_home_dirs.stdout_lines | length > 0
