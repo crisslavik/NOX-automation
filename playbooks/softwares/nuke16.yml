@@ -5,19 +5,24 @@
   
   vars:
     nuke_version: "16.0v6"
-    nuke_install_path: "/opt/Nuke{{ nuke_version }}"
+    nuke_install_dir: "/opt"
     nuke_installer: "Nuke{{ nuke_version }}-linux-x86_64.run"
     nuke_installer_path: "../../files/{{ nuke_installer }}"
-    license_server: "5053@license"
+    nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
+    foundry_license: "5053@license"
     nuke_path: "/mnt/Library/_nox-nuke13"
     ad_home_base: "/home/ad.noxvfx.com"
     
   tasks:
     # Step 1: Install Dependencies
-    - name: Install required dependency (libnuma)
+    - name: Install required dependencies
       dnf:
         name:
-          - numactl-libs    # Provides libnuma - required by Nablet H264 Codec SDK
+          - numactl-libs           # Required by Nablet H264 Codec SDK
+          - mesa-libGL             # OpenGL library
+          - mesa-libGLU            # OpenGL utility library
+          - libglvnd-opengl        # Vendor-neutral OpenGL dispatch library (provides libOpenGL.so.0)
+          - libglvnd-glx           # GLX support
         state: present
 
     # Step 2: Install Nuke
@@ -29,13 +34,13 @@
 
     - name: Check if Nuke is already installed
       stat:
-        path: "{{ nuke_install_path }}"
+        path: "{{ nuke_install_path }}/Nuke{{ nuke_version }}"
       register: nuke_installed
 
     - name: Install Nuke to /opt directory
       command: >
         /tmp/{{ nuke_installer }}
-        --prefix={{ nuke_install_path }}
+        --prefix={{ nuke_install_dir }}
         --accept-foundry-eula
       when: not nuke_installed.stat.exists
 
@@ -51,7 +56,7 @@
         mode: '0644'
         content: |
           # Foundry Nuke Environment Configuration
-          export foundry_LICENSE={{ license_server }}
+          export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
 
     - name: Configure Nuke environment for existing AD users
@@ -60,7 +65,7 @@
         marker: "# {mark} ANSIBLE MANAGED BLOCK - Nuke Configuration"
         block: |
           # Foundry Nuke Environment
-          export foundry_LICENSE={{ license_server }}
+          export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
         create: yes
         mode: '0644'
@@ -82,7 +87,7 @@
         marker: "# {mark} ANSIBLE MANAGED BLOCK - Nuke Configuration"
         block: |
           # Foundry Nuke Environment
-          export foundry_LICENSE={{ license_server }}
+          export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
 
     # Step 5: Create GNOME Desktop Icons
@@ -140,7 +145,7 @@
           Categories=Graphics;2DGraphics;VFX;
           MimeType=application/x-nuke;
 
-    # Step 6: Deploy Desktop Icons to Existing AD Users (FIXED)
+    # Step 6: Deploy Desktop Icons to Existing AD Users
     - name: Find all existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -197,12 +202,15 @@
       register: nuke_version_output
       changed_when: false
       failed_when: false
+      environment:
+        foundry_LICENSE: "{{ foundry_license }}"
+        NUKE_PATH: "{{ nuke_path }}"
 
     - name: Display installation result
       debug:
         msg: |
           Nuke Installation Complete!
           Version: {{ nuke_version_output.stdout | default('Unable to detect') }}
-          Installation Path: {{ nuke_install_path }}
-          License Server: {{ license_server }}
+          Installation Path: {{ nuke_install_path }}/Nuke{{ nuke_version }}
+          License Server: {{ foundry_license }}
           NUKE_PATH: {{ nuke_path }}
