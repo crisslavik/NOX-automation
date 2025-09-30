@@ -1,0 +1,62 @@
+---
+- name: Diagnose DCV Session Issues
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Check DCV server logs
+      ansible.builtin.command:
+        cmd: journalctl -u dcvserver -n 100 --no-pager
+      register: dcv_logs
+      changed_when: false
+
+    - name: Display DCV logs
+      ansible.builtin.debug:
+        msg: "{{ dcv_logs.stdout_lines }}"
+
+    - name: Check if DISPLAY is set for dcv user
+      ansible.builtin.shell:
+        cmd: |
+          ps aux | grep dcvserver
+          echo "---"
+          who
+          echo "---"
+          echo $DISPLAY
+      register: display_check
+      changed_when: false
+
+    - name: Display environment info
+      ansible.builtin.debug:
+        msg: "{{ display_check.stdout_lines }}"
+
+    - name: Check X server status
+      ansible.builtin.command:
+        cmd: systemctl status gdm
+      register: gdm_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display GDM status
+      ansible.builtin.debug:
+        msg: "{{ gdm_status.stdout_lines }}"
+
+    - name: Try creating session with explicit display
+      ansible.builtin.shell:
+        cmd: DISPLAY=:0 dcv create-session --type=console --owner root console
+      register: explicit_session
+      failed_when: false
+      changed_when: false
+
+    - name: Display explicit session creation
+      ansible.builtin.debug:
+        msg: "{{ explicit_session }}"
+
+    - name: List sessions after explicit creation
+      ansible.builtin.command:
+        cmd: dcv list-sessions
+      register: sessions_after
+      changed_when: false
+
+    - name: Show sessions
+      ansible.builtin.debug:
+        msg: "{{ sessions_after.stdout_lines }}"
