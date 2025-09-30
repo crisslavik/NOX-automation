@@ -1,0 +1,33 @@
+---
+- name: Update xorg.conf with additional InputDevice sections
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create DCV input configuration for X11
+      copy:
+        dest: /etc/X11/xorg.conf.d/99-dcv-input.conf
+        content: |
+          Section "InputDevice"
+            Identifier "DCV Stylus Pen"
+            Driver "dcvinput"
+            Option "Pressure2K" "true"
+          EndSection
+          
+          Section "InputDevice"
+            Identifier "DCV Stylus Eraser"
+            Driver "dcvinput"
+            Option "Pressure2K" "true"
+          EndSection
+          
+          Section "InputDevice"
+            Identifier "DCV Touchscreen"
+            Driver "dcvinput"
+          EndSection
+          
+          Section "ServerLayout"
+            Identifier "Default Layout"
+            InputDevice "DCV Stylus Pen"
+            InputDevice "DCV Stylus Eraser"
+            InputDevice "DCV Touchscreen"
+          EndSection
+        mode: '0644'
