@@ -1,7 +1,12 @@
 ---
-- name: NICE DCV Installation - Steps 1-4
+- name: NICE DCV Server Complete Installation
   hosts: all
   become: yes
+  
+  vars:
+    dcv_license_server: "5053@license"
+    ad_domain: "ad.noxvfx.com"
+    ad_home_base: "/home/ad.noxvfx.com"
   
   tasks:
     # STEP 1: Install Prerequisites and Dependencies
@@ -137,3 +142,161 @@
     - name: Display firewall ports
       ansible.builtin.debug:
         msg: "Open ports: {{ firewall_ports.stdout }}"
+
+    # STEP 5: Configure DCV Server Basic Settings
+    - name: Create DCV configuration directory
+      ansible.builtin.file:
+        path: /etc/dcv
+        state: directory
+        mode: '0755'
+
+    - name: Configure DCV server settings
+      ansible.builtin.lineinfile:
+        path: /etc/dcv/dcv.conf
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        create: yes
+        mode: '0644'
+      loop:
+        - { regexp: '^\[security\]', line: '[security]' }
+        - { regexp: '^authentication=', line: 'authentication="system"' }
+        - { regexp: '^\[display\]', line: '[display]' }
+        - { regexp: '^target-fps=', line: 'target-fps=30' }
+        - { regexp: '^\[display/linux\]', line: '[display/linux]' }
+        - { regexp: '^gl-displays=', line: 'gl-displays=[":0.0"]' }
+        - { regexp: '^use-glx-fallback-provider=', line: 'use-glx-fallback-provider=true' }
+        - { regexp: '^\[session-management\]', line: '[session-management]' }
+        - { regexp: '^create-session=', line: 'create-session=true' }
+        - { regexp: '^\[session-management/defaults\]', line: '[session-management/defaults]' }
+        - { regexp: '^permissions-file=', line: 'permissions-file="/etc/dcv/dcv_permissions.conf"' }
+
+    # STEP 6: Configure License Server
+    - name: Configure DCV license server
+      ansible.builtin.lineinfile:
+        path: /etc/dcv/dcv.conf
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        create: yes
+        mode: '0644'
+      loop:
+        - { regexp: '^\[license\]', line: '[license]' }
+        - { regexp: '^license-file=', line: 'license-file="{{ dcv_license_server }}"' }
+
+    # STEP 7: Configure AD Integration
+    - name: Ensure PAM and SSSD are configured for AD (informational)
+      ansible.builtin.debug:
+        msg: "Assuming AD authentication is already configured via SSSD/Kerberos on the system"
+
+    - name: Create DCV permissions file for AD users
+      ansible.builtin.copy:
+        dest: /etc/dcv/dcv_permissions.conf
+        content: |
+          [permissions]
+          %owner% allow builtin
+        mode: '0644'
+
+    # STEP 8: Configure Automatic Session Creation
+    - name: Enable automatic console session creation
+      ansible.builtin.lineinfile:
+        path: /etc/dcv/dcv.conf
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        create: yes
+        mode: '0644'
+      loop:
+        - { regexp: '^\[session-management/automatic-console-session\]', line: '[session-management/automatic-console-session]' }
+        - { regexp: '^owner=', line: 'owner=""' }
+        - { regexp: '^storage-root=', line: 'storage-root="/var/run/dcv/session-storage"' }
+
+    - name: Create session storage directory
+      ansible.builtin.file:
+        path: /var/run/dcv/session-storage
+        state: directory
+        mode: '0755'
+        owner: dcv
+        group: dcv
+
+    - name: Configure session storage permissions for AD users
+      ansible.builtin.lineinfile:
+        path: /etc/dcv/dcv.conf
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        create: yes
+        mode: '0644'
+      loop:
+        - { regexp: '^\[session-management/defaults\]', line: '[session-management/defaults]' }
+        - { regexp: '^max-concurrent-clients=', line: 'max-concurrent-clients=-1' }
+
+    - name: Set default display resolution
+      ansible.builtin.lineinfile:
+        path: /etc/dcv/dcv.conf
+        line: "{{ item.line }}"
+        regexp: "{{ item.regexp }}"
+        create: yes
+        mode: '0644'
+      loop:
+        - { regexp: '^console-session-default-layout=', line: 'console-session-default-layout="1920x1080"' }
+
+    # STEP 9: Enable and Start Services
+    - name: Set default target to graphical
+      ansible.builtin.command:
+        cmd: systemctl set-default graphical.target
+      register: graphical_target
+      changed_when: "'Created symlink' in graphical_target.stdout or 'Removed' in graphical_target.stdout"
+
+    - name: Enable and start GDM (GNOME Display Manager)
+      ansible.builtin.systemd:
+        name: gdm
+        state: started
+        enabled: yes
+
+    - name: Enable DCV server service
+      ansible.builtin.systemd:
+        name: dcvserver
+        enabled: yes
+
+    - name: Start DCV server service
+      ansible.builtin.systemd:
+        name: dcvserver
+        state: started
+
+    - name: Wait for DCV server to be ready
+      ansible.builtin.wait_for:
+        port: 8443
+        delay: 5
+        timeout: 60
+
+    - name: Verify DCV server status
+      ansible.builtin.command:
+        cmd: systemctl status dcvserver
+      register: dcv_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display DCV server status
+      ansible.builtin.debug:
+        msg: "{{ dcv_status.stdout_lines }}"
+
+    # Cleanup
+    - name: Remove temporary DCV packages directory
+      ansible.builtin.file:
+        path: /tmp/nice-dcv-packages
+        state: absent
+
+    - name: Final installation summary
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "NICE DCV Server Installation Complete!"
+          - "=========================================="
+          - "License Server: {{ dcv_license_server }}"
+          - "DCV Port: 8443"
+          - "Authentication: System (AD via SSSD)"
+          - "AD Domain: {{ ad_domain }}"
+          - "AD Home Path: {{ ad_home_base }}"
+          - "Auto Session: Enabled"
+          - "GPU Support: Enabled"
+          - "Web Viewer: Enabled"
+          - "=========================================="
+          - "Access DCV at: https://<server-ip>:8443"
+          - "=========================================="
