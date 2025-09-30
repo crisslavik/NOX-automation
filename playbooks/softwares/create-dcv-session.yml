@@ -1,0 +1,83 @@
+---
+- name: Create DCV Console Session Manually
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Check current DCV sessions
+      ansible.builtin.command:
+        cmd: dcv list-sessions
+      register: existing_sessions
+      changed_when: false
+      failed_when: false
+
+    - name: Display existing sessions
+      ansible.builtin.debug:
+        msg: "{{ existing_sessions.stdout_lines }}"
+
+    - name: Create console session for the system
+      ansible.builtin.command:
+        cmd: dcv create-session --type=console --owner root console
+      register: create_session
+      failed_when: false
+      changed_when: "'Session' in create_session.stdout"
+
+    - name: Display session creation result
+      ansible.builtin.debug:
+        msg: "{{ create_session.stdout }}"
+
+    - name: Wait for session to initialize
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: List sessions after creation
+      ansible.builtin.command:
+        cmd: dcv list-sessions
+      register: final_sessions
+      changed_when: false
+
+    - name: Display final session list
+      ansible.builtin.debug:
+        msg: "{{ final_sessions.stdout_lines }}"
+
+    - name: Get detailed session info
+      ansible.builtin.command:
+        cmd: dcv describe-session console
+      register: session_details
+      changed_when: false
+      failed_when: false
+
+    - name: Display session details
+      ansible.builtin.debug:
+        msg: "{{ session_details.stdout_lines }}"
+
+    - name: Configure session to allow all AD users
+      ansible.builtin.copy:
+        dest: /etc/dcv/dcv_permissions.conf
+        content: |
+          [permissions]
+          %owner% allow builtin
+          * allow builtin
+        mode: '0644'
+      notify: Restart DCV server
+
+    - name: Update DCV configuration for persistent console session
+      ansible.builtin.blockinfile:
+        path: /etc/dcv/dcv.conf
+        block: |
+          [session-management/automatic-console-session]
+          owner="root"
+        marker: "# {mark} ANSIBLE MANAGED - CONSOLE SESSION"
+      notify: Restart DCV server
+
+  handlers:
+    - name: Restart DCV server
+      ansible.builtin.systemd:
+        name: dcvserver
+        state: restarted
+
+    - name: Wait for DCV to restart
+      ansible.builtin.wait_for:
+        port: 8443
+        delay: 5
+        timeout: 60
