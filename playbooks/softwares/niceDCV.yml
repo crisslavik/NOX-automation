@@ -1,12 +1,13 @@
 ---
-- name: NICE DCV Server Complete Installation
+- name: NICE DCV Server Complete Installation - Final Version with Auto-Login
   hosts: all
   become: yes
   
   vars:
-    dcv_license_server: "5053@license"
+    dcv_license_server: "5053@license.ad.noxvfx.com"
     ad_domain: "ad.noxvfx.com"
     ad_home_base: "/home/ad.noxvfx.com"
+    auto_login_user: "cristian.slavik"  # Change this per host or use host_vars
   
   tasks:
     # STEP 1: Install Prerequisites and Dependencies
@@ -54,23 +55,6 @@
         - ../../files/nice-dcv/nice-dcv-simple-external-authenticator-2024.0.266-1.el9.x86_64.rpm
         - ../../files/nice-dcv/nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
         - ../../files/nice-dcv/nice-xdcv-2024.0.654-1.el9.x86_64.rpm
-
-    - name: Verify all RPM files were copied
-      ansible.builtin.stat:
-        path: "/tmp/nice-dcv-packages/{{ item }}"
-      loop:
-        - nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
-        - nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
-        - nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
-        - nice-dcv-simple-external-authenticator-2024.0.266-1.el9.x86_64.rpm
-        - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
-        - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
-      register: rpm_files
-
-    - name: Display verification results
-      ansible.builtin.debug:
-        msg: "All RPM files copied successfully"
-      when: rpm_files.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 6
 
     # STEP 3: Install DCV Packages
     - name: Import NICE GPG key
@@ -133,17 +117,19 @@
         state: enabled
         immediate: yes
 
-    - name: Verify firewall rule for DCV
-      ansible.builtin.command:
-        cmd: firewall-cmd --list-ports
-      register: firewall_ports
-      changed_when: false
+    # STEP 5: Force X11 and Configure Auto-Login
+    - name: Configure GDM to use X11 with auto-login
+      ansible.builtin.copy:
+        dest: /etc/gdm/custom.conf
+        content: |
+          [daemon]
+          AutomaticLoginEnable=True
+          AutomaticLogin={{ auto_login_user }}
+          WaylandEnable=false
+          DefaultSession=gnome-xorg.desktop
+        mode: '0644'
 
-    - name: Display firewall ports
-      ansible.builtin.debug:
-        msg: "Open ports: {{ firewall_ports.stdout }}"
-
-    # STEP 5: Configure DCV Server Basic Settings
+    # STEP 6: Configure DCV Server
     - name: Create DCV configuration directory
       ansible.builtin.file:
         path: /etc/dcv
@@ -151,100 +137,107 @@
         mode: '0755'
 
     - name: Configure DCV server settings
-      ansible.builtin.lineinfile:
-        path: /etc/dcv/dcv.conf
-        line: "{{ item.line }}"
-        regexp: "{{ item.regexp }}"
-        create: yes
+      ansible.builtin.copy:
+        dest: /etc/dcv/dcv.conf
+        content: |
+          [license]
+          license-file="{{ dcv_license_server }}"
+
+          [security]
+          authentication="system"
+
+          [display]
+          target-fps=30
+
+          [display/linux]
+          gl-displays=[":0"]
+          use-glx-fallback-provider=true
+
+          [session-management]
+          create-session=true
+
+          [session-management/defaults]
+          permissions-file="/etc/dcv/dcv_permissions.conf"
+
+          [session-management/automatic-console-session]
+          owner=""
+
+          [connectivity]
+          enable-quic-frontend=true
         mode: '0644'
-      loop:
-        - { regexp: '^\[security\]', line: '[security]' }
-        - { regexp: '^authentication=', line: 'authentication="system"' }
-        - { regexp: '^\[display\]', line: '[display]' }
-        - { regexp: '^target-fps=', line: 'target-fps=30' }
-        - { regexp: '^\[display/linux\]', line: '[display/linux]' }
-        - { regexp: '^gl-displays=', line: 'gl-displays=[":0.0"]' }
-        - { regexp: '^use-glx-fallback-provider=', line: 'use-glx-fallback-provider=true' }
-        - { regexp: '^\[session-management\]', line: '[session-management]' }
-        - { regexp: '^create-session=', line: 'create-session=true' }
-        - { regexp: '^\[session-management/defaults\]', line: '[session-management/defaults]' }
-        - { regexp: '^permissions-file=', line: 'permissions-file="/etc/dcv/dcv_permissions.conf"' }
 
-    # STEP 6: Configure License Server
-    - name: Configure DCV license server
-      ansible.builtin.lineinfile:
-        path: /etc/dcv/dcv.conf
-        line: "{{ item.line }}"
-        regexp: "{{ item.regexp }}"
-        create: yes
-        mode: '0644'
-      loop:
-        - { regexp: '^\[license\]', line: '[license]' }
-        - { regexp: '^license-file=', line: 'license-file="{{ dcv_license_server }}"' }
-
-    # STEP 7: Configure AD Integration
-    - name: Ensure PAM and SSSD are configured for AD (informational)
-      ansible.builtin.debug:
-        msg: "Assuming AD authentication is already configured via SSSD/Kerberos on the system"
-
-    - name: Create DCV permissions file for AD users
+    - name: Create DCV permissions file for all authenticated users
       ansible.builtin.copy:
         dest: /etc/dcv/dcv_permissions.conf
         content: |
           [permissions]
           %owner% allow builtin
+          %authenticated% allow builtin
         mode: '0644'
 
-    # STEP 8: Configure Automatic Session Creation
-    - name: Enable automatic console session creation
-      ansible.builtin.lineinfile:
-        path: /etc/dcv/dcv.conf
-        line: "{{ item.line }}"
-        regexp: "{{ item.regexp }}"
-        create: yes
-        mode: '0644'
-      loop:
-        - { regexp: '^\[session-management/automatic-console-session\]', line: '[session-management/automatic-console-session]' }
-        - { regexp: '^owner=', line: 'owner=""' }
-        - { regexp: '^storage-root=', line: 'storage-root="/var/run/dcv/session-storage"' }
-
-    - name: Create session storage directory
+    # STEP 7: Configure License Server Environment
+    - name: Create systemd override directory for dcvserver
       ansible.builtin.file:
-        path: /var/run/dcv/session-storage
+        path: /etc/systemd/system/dcvserver.service.d
         state: directory
         mode: '0755'
-        owner: dcv
-        group: dcv
 
-    - name: Configure session storage permissions for AD users
-      ansible.builtin.lineinfile:
-        path: /etc/dcv/dcv.conf
-        line: "{{ item.line }}"
-        regexp: "{{ item.regexp }}"
-        create: yes
+    - name: Create systemd override to set RLM_LICENSE environment variable
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dcvserver.service.d/license.conf
+        content: |
+          [Service]
+          Environment="RLM_LICENSE={{ dcv_license_server }}"
         mode: '0644'
-      loop:
-        - { regexp: '^\[session-management/defaults\]', line: '[session-management/defaults]' }
-        - { regexp: '^max-concurrent-clients=', line: 'max-concurrent-clients=-1' }
 
-    - name: Set default display resolution
+    # STEP 8: Fix SSSD Access Control for DCV
+    - name: Backup SSSD configuration
+      ansible.builtin.copy:
+        src: /etc/sssd/sssd.conf
+        dest: /etc/sssd/sssd.conf.backup
+        remote_src: yes
+        force: no
+
+    - name: Change SSSD access_provider from ad to permit
       ansible.builtin.lineinfile:
-        path: /etc/dcv/dcv.conf
-        line: "{{ item.line }}"
-        regexp: "{{ item.regexp }}"
-        create: yes
-        mode: '0644'
-      loop:
-        - { regexp: '^console-session-default-layout=', line: 'console-session-default-layout="1920x1080"' }
+        path: /etc/sssd/sssd.conf
+        regexp: '^access_provider = ad'
+        line: 'access_provider = permit'
+        backup: yes
 
-    # STEP 9: Enable and Start Services
+    - name: Restart SSSD to apply changes
+      ansible.builtin.systemd:
+        name: sssd
+        state: restarted
+
+    # STEP 9: Configure PAM for DCV
+    - name: Create DCV PAM configuration
+      ansible.builtin.copy:
+        dest: /etc/pam.d/dcv
+        content: |
+          #%PAM-1.0
+          auth       sufficient   pam_sss.so
+          auth       required     pam_deny.so
+          account    sufficient   pam_sss.so
+          account    sufficient   pam_permit.so
+          session    optional     pam_keyinit.so revoke
+          session    required     pam_limits.so
+          session    required     pam_unix.so
+          session    optional     pam_sss.so
+        mode: '0644'
+
+    # STEP 10: Enable and Start Services
     - name: Set default target to graphical
       ansible.builtin.command:
         cmd: systemctl set-default graphical.target
       register: graphical_target
       changed_when: "'Created symlink' in graphical_target.stdout or 'Removed' in graphical_target.stdout"
 
-    - name: Enable and start GDM (GNOME Display Manager)
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Enable and start GDM
       ansible.builtin.systemd:
         name: gdm
         state: started
@@ -266,17 +259,6 @@
         delay: 5
         timeout: 60
 
-    - name: Verify DCV server status
-      ansible.builtin.command:
-        cmd: systemctl status dcvserver
-      register: dcv_status
-      changed_when: false
-      failed_when: false
-
-    - name: Display DCV server status
-      ansible.builtin.debug:
-        msg: "{{ dcv_status.stdout_lines }}"
-
     # Cleanup
     - name: Remove temporary DCV packages directory
       ansible.builtin.file:
@@ -293,10 +275,13 @@
           - "DCV Port: 8443"
           - "Authentication: System (AD via SSSD)"
           - "AD Domain: {{ ad_domain }}"
-          - "AD Home Path: {{ ad_home_base }}"
-          - "Auto Session: Enabled"
-          - "GPU Support: Enabled"
-          - "Web Viewer: Enabled"
+          - "Display: X11 (Wayland disabled)"
+          - "Auto-Login User: {{ auto_login_user }}"
+          - "Access: https://{{ inventory_hostname }}:8443"
           - "=========================================="
-          - "Access DCV at: https://<server-ip>:8443"
+          - "NEXT STEPS:"
+          - "1. REBOOT the machine: ansible all -m reboot"
+          - "2. After reboot, {{ auto_login_user }} will auto-login"
+          - "3. DCV console session will attach automatically"
+          - "4. Users can connect via web browser"
           - "=========================================="
