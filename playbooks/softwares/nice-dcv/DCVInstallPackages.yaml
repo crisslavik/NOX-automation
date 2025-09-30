@@ -3,9 +3,28 @@
   hosts: all
   become: yes
   tasks:
+    - name: Create temporary directory for DCV packages
+      file:
+        path: /tmp/dcv-packages
+        state: directory
+        mode: '0755'
+
+    - name: Copy RPM files to remote hosts
+      copy:
+        src: "{{ playbook_dir }}/Installer/{{ item }}"
+        dest: /tmp/dcv-packages/
+        mode: '0644'
+      loop:
+        - nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
+        - nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
+        - nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
+        - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
+        - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
+        - nice-dcv-viewer-el9.x86_64.2024.0.rpm
+
     - name: Install required RPM packages
       dnf:
-        name: "{{ playbook_dir }}/Installer/{{ item }}"
+        name: /tmp/dcv-packages/{{ item }}
         state: present
         disable_gpg_check: yes
       loop:
@@ -15,4 +34,9 @@
         - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
         - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
         - nice-dcv-viewer-el9.x86_64.2024.0.rpm
+
+    - name: Clean up temporary directory
+      file:
+        path: /tmp/dcv-packages
+        state: absent
       tags: dcv_install
