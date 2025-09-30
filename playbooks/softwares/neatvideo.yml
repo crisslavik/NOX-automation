@@ -35,10 +35,16 @@
         dest: /tmp/{{ neatvideo_installer }}
         mode: '0755'
 
-    - name: Run NeatVideo installer
-      command: /tmp/{{ neatvideo_installer }}
+    - name: Run NeatVideo installer in console mode
+      command: /tmp/{{ neatvideo_installer }} --mode console
       args:
         creates: "{{ install_base }}"
+      register: install_result
+
+    - name: Show installation output
+      debug:
+        var: install_result.stdout_lines
+      when: install_result.changed
 
     - name: Verify OFX plugin installation
       stat:
