@@ -42,7 +42,7 @@
         state: present
       tags: dependencies
 
-# STEP 2: Repository and Installer Setup
+    # STEP 2: Repository and Installer Setup
     - name: Check if repository is already mounted or accessible
       ansible.builtin.stat:
         path: "{{ deadline_repo_path }}"
@@ -117,22 +117,13 @@
       when: install_result.changed
       tags: install
 
-# STEP 4: Configure for Existing AD Users
+    # STEP 4: Configure for Existing AD Users
     - name: Find all existing AD user home directories
       ansible.builtin.find:
         paths: "{{ ad_home_base }}"
         file_type: directory
         recurse: no
       register: ad_user_homes
-      tags: configure_users
-
-    - name: Get user information for AD users
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ item.path | basename }}"
-      loop: "{{ ad_user_homes.files }}"
-      register: user_info
-      failed_when: false
       tags: configure_users
 
     - name: Create .deadline directory for existing AD users
@@ -184,7 +175,82 @@
           Enabled=True
       tags: configure_skel
 
-    # STEP 6: Configure Deadline Environment
+    # STEP 6: Configure Desktop Shortcuts
+    - name: Create .local/share/applications directory for existing AD users
+      ansible.builtin.file:
+        path: "{{ item.path }}/.local/share/applications"
+        state: directory
+        owner: "{{ item.path | basename }}"
+        group: "{{ item.gid }}"
+        mode: '0755'
+      loop: "{{ ad_user_homes.files }}"
+      tags: desktop_shortcuts
+
+    - name: Copy Deadline Launcher desktop file for existing AD users
+      ansible.builtin.copy:
+        src: "{{ deadline_install_path }}/bin/deadlinelauncher10.desktop"
+        dest: "{{ item.path }}/.local/share/applications/deadlinelauncher10.desktop"
+        owner: "{{ item.path | basename }}"
+        group: "{{ item.gid }}"
+        mode: '0644'
+        remote_src: yes
+      loop: "{{ ad_user_homes.files }}"
+      tags: desktop_shortcuts
+
+    - name: Copy Deadline Monitor desktop file for existing AD users
+      ansible.builtin.copy:
+        src: "{{ deadline_install_path }}/bin/deadlinemonitor10.desktop"
+        dest: "{{ item.path }}/.local/share/applications/deadlinemonitor10.desktop"
+        owner: "{{ item.path | basename }}"
+        group: "{{ item.gid }}"
+        mode: '0644'
+        remote_src: yes
+      loop: "{{ ad_user_homes.files }}"
+      tags: desktop_shortcuts
+
+    - name: Copy Deadline Worker desktop file for existing AD users
+      ansible.builtin.copy:
+        src: "{{ deadline_install_path }}/bin/deadlineworker10.desktop"
+        dest: "{{ item.path }}/.local/share/applications/deadlineworker10.desktop"
+        owner: "{{ item.path | basename }}"
+        group: "{{ item.gid }}"
+        mode: '0644'
+        remote_src: yes
+      loop: "{{ ad_user_homes.files }}"
+      tags: desktop_shortcuts
+
+    - name: Create .local/share/applications directory in /etc/skel
+      ansible.builtin.file:
+        path: /etc/skel/.local/share/applications
+        state: directory
+        mode: '0755'
+      tags: desktop_shortcuts
+
+    - name: Copy Deadline Launcher desktop file to /etc/skel
+      ansible.builtin.copy:
+        src: "{{ deadline_install_path }}/bin/deadlinelauncher10.desktop"
+        dest: /etc/skel/.local/share/applications/deadlinelauncher10.desktop
+        mode: '0644'
+        remote_src: yes
+      tags: desktop_shortcuts
+
+    - name: Copy Deadline Monitor desktop file to /etc/skel
+      ansible.builtin.copy:
+        src: "{{ deadline_install_path }}/bin/deadlinemonitor10.desktop"
+        dest: /etc/skel/.local/share/applications/deadlinemonitor10.desktop
+        mode: '0644'
+        remote_src: yes
+      tags: desktop_shortcuts
+
+    - name: Copy Deadline Worker desktop file to /etc/skel
+      ansible.builtin.copy:
+        src: "{{ deadline_install_path }}/bin/deadlineworker10.desktop"
+        dest: /etc/skel/.local/share/applications/deadlineworker10.desktop
+        mode: '0644'
+        remote_src: yes
+      tags: desktop_shortcuts
+
+    # STEP 7: Configure Deadline Environment
     - name: Add Deadline to system PATH
       ansible.builtin.copy:
         dest: /etc/profile.d/deadline.sh
@@ -205,7 +271,7 @@
         msg: "Deadline installed successfully: {{ deadline_version_check.stdout }}"
       tags: verify
 
-    # STEP 7: Cleanup
+    # STEP 8: Cleanup
     - name: Remove temporary installer files
       ansible.builtin.file:
         path: /tmp/deadline_install
@@ -221,4 +287,7 @@
           - RCS Server: {{ rcs_server }}:{{ rcs_port }}
           - Configured for existing AD users in {{ ad_home_base }}
           - Configured for future users via /etc/skel
+          - Desktop shortcuts added for Launcher, Monitor, and Worker
+          - Launcher daemon running and will auto-start on boot
+          - Worker will start automatically when Launcher starts
       tags: always
