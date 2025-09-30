@@ -12,8 +12,7 @@
         - nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
         - nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
         - nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
-        - nice-dcv-session-manager-agent-el9.x86_64.2024.0.rpm
-        - nice-dcv-viewer-el9.x86_64.2024.0.rpm
         - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
-        - nice-dcv-xdcv-2024.0.654-1.el9.x86_64.rpm
+        - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
+        - nice-dcv-viewer-el9.x86_64.2024.0.rpm
       tags: dcv_install
