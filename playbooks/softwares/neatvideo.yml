@@ -6,8 +6,7 @@
   vars:
     neatvideo_version: "5"
     neatvideo_installer: "NeatVideo5OFX.Studio.Intel64.run"
-    neatvideo_tarball: "NeatVideo-5-Linux.tar.gz"
-    neatvideo_source_path: "../../files/{{ neatvideo_tarball }}"
+    neatvideo_source_path: "../../files/{{ neatvideo_installer }}"
     
     # Installation paths
     install_base: "/usr/local/Neat Video v5 OFX"
@@ -28,38 +27,18 @@
 
   tasks:
     # ========================================
-    # STEP 1: Extract and Install
+    # STEP 1: Copy and Install
     # ========================================
-    - name: Create temporary extraction directory
-      file:
-        path: /tmp/neatvideo_install
-        state: directory
-        mode: '0755'
-
-    - name: Extract NeatVideo tarball
-      unarchive:
+    - name: Copy NeatVideo installer to remote host
+      copy:
         src: "{{ neatvideo_source_path }}"
-        dest: /tmp/neatvideo_install
-        remote_src: no
-
-    - name: Find the installer file
-      find:
-        paths: /tmp/neatvideo_install
-        patterns: "{{ neatvideo_installer }}"
-        recurse: yes
-      register: installer_file
-
-    - name: Make installer executable
-      file:
-        path: "{{ installer_file.files[0].path }}"
+        dest: /tmp/{{ neatvideo_installer }}
         mode: '0755'
-      when: installer_file.matched > 0
 
-    - name: Run NeatVideo installer (silent mode)
-      command: "{{ installer_file.files[0].path }}"
+    - name: Run NeatVideo installer
+      command: /tmp/{{ neatvideo_installer }}
       args:
         creates: "{{ install_base }}"
-      when: installer_file.matched > 0
 
     - name: Verify OFX plugin installation
       stat:
@@ -141,7 +120,7 @@
       file:
         path: "{{ neatvideo_temp_base }}"
         state: directory
-        mode: '1777'  # Sticky bit + world writable (like /tmp)
+        mode: '1777'
 
     - name: Create NeatVideo preferences file in /etc/skel
       copy:
@@ -176,9 +155,9 @@
     # ========================================
     # STEP 5: Cleanup
     # ========================================
-    - name: Clean up temporary installation directory
+    - name: Clean up installer file
       file:
-        path: /tmp/neatvideo_install
+        path: /tmp/{{ neatvideo_installer }}
         state: absent
 
     # ========================================
