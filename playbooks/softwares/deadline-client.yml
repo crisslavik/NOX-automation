@@ -175,7 +175,7 @@
           Enabled=True
       tags: configure_skel
 
-    # STEP 6: Configure Desktop Shortcuts
+# STEP 6: Configure Desktop Shortcuts
     - name: Create .local/share/applications directory for existing AD users
       ansible.builtin.file:
         path: "{{ item.path }}/.local/share/applications"
@@ -188,33 +188,33 @@
 
     - name: Copy Deadline Launcher desktop file for existing AD users
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/bin/deadlinelauncher10.desktop"
+        src: "{{ deadline_install_path }}/deadlinelauncher10.desktop"
         dest: "{{ item.path }}/.local/share/applications/deadlinelauncher10.desktop"
         owner: "{{ item.path | basename }}"
         group: "{{ item.gid }}"
-        mode: '0644'
+        mode: '0755'
         remote_src: yes
       loop: "{{ ad_user_homes.files }}"
       tags: desktop_shortcuts
 
     - name: Copy Deadline Monitor desktop file for existing AD users
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/bin/deadlinemonitor10.desktop"
+        src: "{{ deadline_install_path }}/deadlinemonitor10.desktop"
         dest: "{{ item.path }}/.local/share/applications/deadlinemonitor10.desktop"
         owner: "{{ item.path | basename }}"
         group: "{{ item.gid }}"
-        mode: '0644'
+        mode: '0755'
         remote_src: yes
       loop: "{{ ad_user_homes.files }}"
       tags: desktop_shortcuts
 
     - name: Copy Deadline Worker desktop file for existing AD users
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/bin/deadlineworker10.desktop"
+        src: "{{ deadline_install_path }}/deadlineworker10.desktop"
         dest: "{{ item.path }}/.local/share/applications/deadlineworker10.desktop"
         owner: "{{ item.path | basename }}"
         group: "{{ item.gid }}"
-        mode: '0644'
+        mode: '0755'
         remote_src: yes
       loop: "{{ ad_user_homes.files }}"
       tags: desktop_shortcuts
@@ -228,25 +228,25 @@
 
     - name: Copy Deadline Launcher desktop file to /etc/skel
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/bin/deadlinelauncher10.desktop"
+        src: "{{ deadline_install_path }}/deadlinelauncher10.desktop"
         dest: /etc/skel/.local/share/applications/deadlinelauncher10.desktop
-        mode: '0644'
+        mode: '0755'
         remote_src: yes
       tags: desktop_shortcuts
 
     - name: Copy Deadline Monitor desktop file to /etc/skel
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/bin/deadlinemonitor10.desktop"
+        src: "{{ deadline_install_path }}/deadlinemonitor10.desktop"
         dest: /etc/skel/.local/share/applications/deadlinemonitor10.desktop
-        mode: '0644'
+        mode: '0755'
         remote_src: yes
       tags: desktop_shortcuts
 
     - name: Copy Deadline Worker desktop file to /etc/skel
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/bin/deadlineworker10.desktop"
+        src: "{{ deadline_install_path }}/deadlineworker10.desktop"
         dest: /etc/skel/.local/share/applications/deadlineworker10.desktop
-        mode: '0644'
+        mode: '0755'
         remote_src: yes
       tags: desktop_shortcuts
 
