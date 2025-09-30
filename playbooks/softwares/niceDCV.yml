@@ -28,3 +28,44 @@
       ansible.builtin.yum:
         name: dkms
         state: present
+
+      - name: Copy NICE DCV RPM files to target machines
+        hosts: all
+        become: yes
+        
+        tasks:
+          - name: Create temporary directory for DCV packages
+            ansible.builtin.file:
+              path: /tmp/nice-dcv-packages
+              state: directory
+              mode: '0755'
+      
+          - name: Copy all NICE DCV RPM files
+            ansible.builtin.copy:
+              src: "{{ item }}"
+              dest: /tmp/nice-dcv-packages/
+              mode: '0644'
+            loop:
+              - ../../files/nice-dcv/nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
+              - ../../files/nice-dcv/nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
+              - ../../files/nice-dcv/nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
+              - ../../files/nice-dcv/nice-dcv-simple-external-authenticator-2024.0.266-1.el9.x86_64.rpm
+              - ../../files/nice-dcv/nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
+              - ../../files/nice-dcv/nice-xdcv-2024.0.654-1.el9.x86_64.rpm
+      
+          - name: Verify all RPM files were copied
+            ansible.builtin.stat:
+              path: "/tmp/nice-dcv-packages/{{ item }}"
+            loop:
+              - nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
+              - nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
+              - nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
+              - nice-dcv-simple-external-authenticator-2024.0.266-1.el9.x86_64.rpm
+              - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
+              - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
+            register: rpm_files
+      
+          - name: Display verification results
+            ansible.builtin.debug:
+              msg: "All RPM files copied successfully"
+            when: rpm_files.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 6
