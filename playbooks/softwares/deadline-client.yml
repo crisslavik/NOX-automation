@@ -15,10 +15,16 @@
     
   tasks:
     # STEP 1: Install Dependencies
+    - name: Enable EPEL repository
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+      tags: dependencies
+
     - name: Install required dependencies for Deadline Client
       ansible.builtin.dnf:
         name:
-          - redhat-lsb-core
+          - lsb
           - libX11
           - libXext
           - mesa-libGL
