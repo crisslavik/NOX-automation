@@ -109,13 +109,15 @@
         state: present
         disable_gpg_check: no
 
-    - name: Install DCV USB drivers
+    - name: Install DCV USB drivers (with timeout)
       ansible.builtin.command:
-        cmd: dcvusbdriverinstaller
+        cmd: dcvusbdriverinstaller --quiet
+      async: 60
+      poll: 5
       register: usb_driver_install
       failed_when: false
       changed_when: usb_driver_install.rc == 0
 
     - name: Display USB driver installation result
       ansible.builtin.debug:
-        msg: "USB drivers installation: {{ 'Success' if usb_driver_install.rc == 0 else 'Failed or already installed' }}"
+        msg: "USB drivers installation: {{ 'Success' if usb_driver_install.rc == 0 else 'Skipped or failed (non-critical)' }}"
