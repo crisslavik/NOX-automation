@@ -15,21 +15,30 @@
     
   tasks:
     # STEP 1: Install Dependencies
-    - name: Enable EPEL repository
+    - name: Enable EPEL and CRB repositories
       ansible.builtin.dnf:
-        name: epel-release
+        name:
+          - epel-release
         state: present
+      tags: dependencies
+
+    - name: Enable CRB (CodeReady Builder) repository
+      ansible.builtin.command:
+        cmd: dnf config-manager --set-enabled crb
+      args:
+        creates: /etc/yum.repos.d/crb.repo
       tags: dependencies
 
     - name: Install required dependencies for Deadline Client
       ansible.builtin.dnf:
         name:
-          - lsb
           - libX11
           - libXext
           - mesa-libGL
           - mesa-libGLU
           - nfs-utils
+          - libxcrypt-compat
+          - ncurses-compat-libs
         state: present
       tags: dependencies
 
