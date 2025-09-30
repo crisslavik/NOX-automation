@@ -42,43 +42,23 @@
         state: present
       tags: dependencies
 
-  # STEP 2: Repository and Installer Setup
-    - name: Create parent directories for repository mount
-      ansible.builtin.file:
-        path: /mnt/Library/_deadlinerepo
-        state: directory
-        mode: '0755'
-      tags: repository
-
-    - name: Check if repository directory exists
+# STEP 2: Repository and Installer Setup
+    - name: Check if repository is already mounted or accessible
       ansible.builtin.stat:
         path: "{{ deadline_repo_path }}"
-      register: repo_dir
+      register: repo_check
       tags: repository
 
-    - name: Create repository mount point if it doesn't exist
-      ansible.builtin.file:
-        path: "{{ deadline_repo_path }}"
-        state: directory
-        mode: '0755'
-      when: not repo_dir.stat.exists
-      tags: repository
-
-    - name: Check if repository is already mounted
-      ansible.builtin.shell: mountpoint -q {{ deadline_repo_path }}
-      register: repo_mounted
-      failed_when: false
+    - name: Verify repository is accessible
+      ansible.builtin.command: ls {{ deadline_repo_path }}
+      register: repo_access
+      failed_when: repo_access.rc != 0
       changed_when: false
       tags: repository
 
-    - name: Mount repository if not already mounted
-      ansible.builtin.mount:
-        path: "{{ deadline_repo_path }}"
-        src: "{{ rcs_server }}:{{ deadline_repo_path }}"
-        fstype: nfs
-        opts: rw,hard,intr
-        state: mounted
-      when: repo_mounted.rc != 0
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "Repository at {{ deadline_repo_path }} is accessible"
       tags: repository
 
     - name: Create temporary directory for installer
