@@ -1,13 +1,18 @@
 ---
-- name: Install DaVinci Resolve Studio 20.2.1 on AlmaLinux 9
+- name: Install DaVinci Resolve Studio 20.2.1 with Centralized Database
   hosts: all
   become: yes
   
   vars:
     resolve_installer: "../../files/DaVinci_Resolve_Studio_20.2.1_Linux.run"
     resolve_temp_dir: "/tmp/resolve_install"
-    resolve_database_path: "/mnt/Projects/_resolve/database"
     resolve_projects_path: "/mnt/Projects/_resolve/projects"
+    # Centralized PostgreSQL Database
+    db_host: "192.168.11.128"
+    db_port: "5432"
+    db_name: "resolve_db"
+    db_user: "resolve_user"
+    db_password: "resolvedb"
     
   tasks:
     # STEP 1: Install System Dependencies
@@ -48,6 +53,14 @@
           - alsa-lib
           - pulseaudio-libs
           - unzip
+          - postgresql
+        state: present
+
+    - name: Install SELinux policy tools
+      ansible.builtin.dnf:
+        name:
+          - policycoreutils-python-utils
+          - setroubleshoot-server
         state: present
 
     # STEP 2: Install DaVinci Resolve
@@ -75,18 +88,31 @@
       register: resolve_binary
       failed_when: not resolve_binary.stat.exists
 
-    # STEP 3: Configure Database and Project Paths
-    - name: Create shared Resolve directories
+    - name: Kill any DaVinci Resolve processes started by installer
+      ansible.builtin.shell: pkill -f "resolve" || true
+      ignore_errors: yes
+
+    # SELinux Configuration
+    - name: Set SELinux context for DaVinci Resolve binaries
+      ansible.builtin.command:
+        cmd: restorecon -Rv /opt/resolve
+      ignore_errors: yes
+
+    - name: Allow DaVinci Resolve SELinux permissions
+      ansible.builtin.command:
+        cmd: setsebool -P {{ item }} 1
+      loop:
+        - allow_execmem
+      ignore_errors: yes
+
+    # STEP 3: Configure Centralized Database Connection
+    - name: Create shared Resolve projects directory
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ resolve_projects_path }}"
         state: directory
         mode: '0777'
         owner: root
         group: root
-      loop:
-        - /mnt/Projects/_resolve
-        - "{{ resolve_database_path }}"
-        - "{{ resolve_projects_path }}"
 
     - name: Create Resolve configuration directory in /etc/skel
       ansible.builtin.file:
@@ -94,13 +120,23 @@
         state: directory
         mode: '0755'
 
-    - name: Create preferences.xml for database and project paths
+    - name: Create .pgpass file in /etc/skel for automatic authentication
+      ansible.builtin.copy:
+        content: "{{ db_host }}:{{ db_port }}:{{ db_name }}:{{ db_user }}:{{ db_password }}"
+        dest: /etc/skel/.pgpass
+        mode: '0600'
+
+    - name: Create preferences.xml for centralized database
       ansible.builtin.copy:
         content: |
           <?xml version="1.0" encoding="UTF-8"?>
           <preferences>
             <ResolveDatabase>
-              <DatabasePath>{{ resolve_database_path }}</DatabasePath>
+              <DatabaseType>PostgreSQL</DatabaseType>
+              <DatabaseHost>{{ db_host }}</DatabaseHost>
+              <DatabasePort>{{ db_port }}</DatabasePort>
+              <DatabaseName>{{ db_name }}</DatabaseName>
+              <DatabaseUser>{{ db_user }}</DatabaseUser>
             </ResolveDatabase>
             <ProjectLibrary>
               <ProjectPath>{{ resolve_projects_path }}</ProjectPath>
@@ -126,12 +162,17 @@
               # Copy preferences
               cp /etc/skel/.local/share/DaVinciResolve/configs/preferences.xml "$user_home/.local/share/DaVinciResolve/configs/"
               
+              # Copy .pgpass for database authentication
+              cp /etc/skel/.pgpass "$user_home/.pgpass"
+              chmod 0600 "$user_home/.pgpass"
+              
               # Create cache directories
               mkdir -p "$user_home/.cache/resolve/"{CacheClip,Gallery,Proxy}
               
               # Set ownership
               chown -R "$user":"domain users@ad.noxvfx.com" "$user_home/.local/share/DaVinciResolve"
               chown -R "$user":"domain users@ad.noxvfx.com" "$user_home/.cache/resolve"
+              chown "$user":"domain users@ad.noxvfx.com" "$user_home/.pgpass"
             fi
           fi
         done
@@ -148,8 +189,10 @@
       ansible.builtin.debug:
         msg: 
           - "DaVinci Resolve Studio 20.2.1 installation completed!"
-          - "Shared database: {{ resolve_database_path }}"
+          - "Using CENTRALIZED PostgreSQL Database"
+          - "Database Server: {{ db_host }}:{{ db_port }}"
+          - "Database Name: {{ db_name }}"
           - "Shared projects: {{ resolve_projects_path }}"
           - "User cache: ~/.cache/resolve/"
-          - "All users (existing and new) will use shared workspace"
-          - "SELinux alerts can be reviewed and resolved if needed"
+          - "All workstations share the same database - full collaboration enabled!"
+          - "SELinux has been configured for DaVinci Resolve"
