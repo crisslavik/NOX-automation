@@ -1,71 +1,68 @@
 ---
-- name: Deploy Autodesk RV to AlmaLinux 9
+- name: Deploy Autodesk RV 2025 to AlmaLinux 9
   hosts: all
   become: yes
   vars:
-    # --- Installation Path Reverted to /opt/RV ---
+    # --- Installation Path Variables ---
+    # This is the final path where the RV files will reside (e.g., /opt/RV/bin/rv)
+    rv_final_path: "/opt/RV"
+    # This is the parent directory for extraction to avoid the double-folder issue
+    rv_extract_parent_path: "/opt"
+    # Source file details (must exist in your Ansible 'files' directory)
     rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
-    rv_install_path: "/opt/RV" 
-    rv_temp_dir_name: "RV-Linux-Rocky9-Release-2025.0.0" 
   
   tasks:
-    - name: Install RV dependencies
+    - name: 1. Install critical dependencies for RV on AlmaLinux 9
       dnf:
         name:
           - unzip
           - tcsh
-          # Critical dependency fixes found during troubleshooting:
+          # CRITICAL: OpenGL/Graphics Libraries
           - libglvnd-devel
           - mesa-libGLU
+          # CRITICAL: Compatibility Libraries (needed for legacy RV components)
           - ncurses-compat-libs
+          # CRITICAL: Image Format Libraries
           - libjpeg-turbo-devel
           - libtiff-devel
         state: present
 
-    - name: Create RV installation directory
-      file:
-        path: "{{ rv_install_path }}"
-        state: directory
-        mode: '0755'
-        owner: root
-        group: root
-
-    - name: Copy RV zip file to target machine
+    - name: 2. Copy RV zip file to target machine
       copy:
         src: "{{ rv_source_zip }}"
         dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         mode: '0644'
 
-    - name: Extract RV zip file to target directory
-      # Extracts the contents (bin, lib, etc.) directly into /opt/RV
+    - name: 3. Extract RV zip file to parent directory (avoiding double '/opt/RV/RV')
+      # Extracts to /opt. The internal 'RV' folder inside the zip will result in /opt/RV.
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
-        dest: "{{ rv_install_path }}"
+        dest: "{{ rv_extract_parent_path }}"
         remote_src: yes
-
-    - name: Set proper permissions on RV directory
+        
+    - name: 4. Set ownership and proper permissions on RV directory
       file:
-        path: "{{ rv_install_path }}"
+        path: "{{ rv_final_path }}"
         state: directory
         recurse: yes
         mode: 'u=rwX,g=rX,o=rX'
         owner: root
         group: root
 
-    - name: Ensure RV binaries are executable
+    - name: 5. Ensure RV binaries are executable
       file:
-        path: "{{ rv_install_path }}/bin"
+        path: "{{ rv_final_path }}/bin"
         state: directory
         recurse: yes
         mode: 'u=rwx,g=rx,o=rx'
 
-    - name: Run RV protocol handler installation
-      command: "{{ rv_install_path }}/bin/rv.install_handler"
+    - name: 6. Run RV protocol handler installation
+      command: "{{ rv_final_path }}/bin/rv.install_handler"
       changed_when: true
       ignore_errors: yes
 
-    # --- CRITICAL FIX: Environment Setup Script with /opt/RV path ---
-    - name: Create RV environment setup script
+    - name: 7. Create RV environment setup script in /etc/profile.d/
+      # CRITICAL FIX: Sets LD_LIBRARY_PATH so RV can find its bundled Qt, OpenEXR, etc., libraries.
       copy:
         dest: /etc/profile.d/rv.sh
         mode: '0755'
@@ -73,12 +70,11 @@
           #!/bin/bash
           # Autodesk RV Environment Setup
           
-          export RV_HOME="{{ rv_install_path }}"
-          # CRITICAL: Add the RV bundled 'lib' folder to LD_LIBRARY_PATH
+          export RV_HOME="{{ rv_final_path }}"
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
           export PATH=$RV_HOME/bin:$PATH
 
-    - name: Create RV desktop entry for all users
+    - name: 8. Create RV desktop entry for all users
       copy:
         dest: /usr/share/applications/autodesk-rv.desktop
         mode: '0644'
@@ -88,17 +84,17 @@
           Type=Application
           Name=Autodesk RV
           Comment=Media review and playback software
-          Exec={{ rv_install_path }}/bin/rv
-          Icon={{ rv_install_path }}/resources/RV.ico
+          Exec={{ rv_final_path }}/bin/rv
+          Icon={{ rv_final_path }}/resources/RV.ico
           Terminal=false
           Categories=Graphics;Video;AudioVideo;
           StartupNotify=true
 
-    - name: Update desktop database
+    - name: 9. Update desktop database
       command: update-desktop-database /usr/share/applications/
       changed_when: false
 
-    - name: Clean up temporary files
+    - name: 10. Clean up temporary zip file
       file:
         path: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         state: absent
