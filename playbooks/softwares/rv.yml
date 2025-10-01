@@ -57,7 +57,7 @@
         mode: 'u=rwx,g=rx,o=rx'
 
     - name: 6. Run RV protocol handler installation
-      command: "{{ rv_final_path }}/bin/rv.install_handler"
+      command: "{{ rv_final_path }}/bin/rv.install_handler_linux"
       changed_when: true
       ignore_errors: yes
 
