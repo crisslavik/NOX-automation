@@ -6,6 +6,8 @@
   vars:
     resolve_installer: "../../files/DaVinci_Resolve_Studio_20.2.1_Linux.run"
     resolve_temp_dir: "/tmp/resolve_install"
+    resolve_database_path: "/mnt/Projects/_resolve/database"
+    resolve_projects_path: "/mnt/Projects/_resolve/projects"
     
   tasks:
     # STEP 1: Install System Dependencies
@@ -82,9 +84,9 @@
         owner: root
         group: root
       loop:
-        - /mnt/Library/_resolve
-        - /mnt/Library/_resolve/database
-        - /mnt/Library/_resolve/projects
+        - /mnt/Projects/_resolve
+        - "{{ resolve_database_path }}"
+        - "{{ resolve_projects_path }}"
 
     - name: Create Resolve configuration directory in /etc/skel
       ansible.builtin.file:
@@ -98,10 +100,10 @@
           <?xml version="1.0" encoding="UTF-8"?>
           <preferences>
             <ResolveDatabase>
-              <DatabasePath>/mnt/Library/_resolve/database</DatabasePath>
+              <DatabasePath>{{ resolve_database_path }}</DatabasePath>
             </ResolveDatabase>
             <ProjectLibrary>
-              <ProjectPath>/mnt/Library/_resolve/projects</ProjectPath>
+              <ProjectPath>{{ resolve_projects_path }}</ProjectPath>
             </ProjectLibrary>
             <CacheClipsLocation>$HOME/.cache/resolve/CacheClip</CacheClipsLocation>
             <GalleryStillsLocation>$HOME/.cache/resolve/Gallery</GalleryStillsLocation>
@@ -146,7 +148,8 @@
       ansible.builtin.debug:
         msg: 
           - "DaVinci Resolve Studio 20.2.1 installation completed!"
-          - "Shared database: /mnt/Library/_resolve/database"
-          - "Shared projects: /mnt/Library/_resolve/projects"
+          - "Shared database: {{ resolve_database_path }}"
+          - "Shared projects: {{ resolve_projects_path }}"
           - "User cache: ~/.cache/resolve/"
           - "All users (existing and new) will use shared workspace"
+          - "SELinux alerts can be reviewed and resolved if needed"
