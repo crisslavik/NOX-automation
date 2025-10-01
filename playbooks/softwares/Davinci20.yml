@@ -1,0 +1,153 @@
+---
+- name: Install DaVinci Resolve Studio 20.2.1 on AlmaLinux 9
+  hosts: all
+  become: yes
+  
+  vars:
+    resolve_installer: "../../files/DaVinci_Resolve_Studio_20.2.1_Linux.run"
+    resolve_temp_dir: "/tmp/resolve_install"
+    
+  tasks:
+    # STEP 1: Install System Dependencies
+    - name: Enable CRB repository (CodeReady Builder)
+      ansible.builtin.command: dnf config-manager --set-enabled crb
+      args:
+        creates: /etc/yum.repos.d/almalinux-crb.repo
+    
+    - name: Install EPEL repository
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+    
+    - name: Install required system dependencies
+      ansible.builtin.dnf:
+        name:
+          - apr
+          - apr-util
+          - libxcb
+          - xcb-util
+          - xcb-util-wm
+          - xcb-util-image
+          - xcb-util-keysyms
+          - xcb-util-renderutil
+          - libxkbcommon
+          - libxkbcommon-x11
+          - libXrandr
+          - libXinerama
+          - libXcursor
+          - mesa-libGLU
+          - libglvnd-glx
+          - libglvnd-egl
+          - libglvnd-opengl
+          - ocl-icd
+          - opencl-headers
+          - libxcrypt-compat
+          - alsa-lib
+          - pulseaudio-libs
+          - unzip
+        state: present
+
+    # STEP 2: Install DaVinci Resolve
+    - name: Create temporary directory for installation
+      ansible.builtin.file:
+        path: "{{ resolve_temp_dir }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Copy DaVinci Resolve installer to target
+      ansible.builtin.copy:
+        src: "{{ resolve_installer }}"
+        dest: "{{ resolve_temp_dir }}/DaVinci_Resolve_Studio_20.2.1_Linux.run"
+        mode: '0755'
+    
+    - name: Install DaVinci Resolve in silent mode
+      ansible.builtin.command:
+        cmd: "{{ resolve_temp_dir }}/DaVinci_Resolve_Studio_20.2.1_Linux.run -i -y"
+      args:
+        creates: /opt/resolve/bin/resolve
+      environment:
+        SKIP_PACKAGE_CHECK: "1"
+    
+    - name: Verify DaVinci Resolve installation
+      ansible.builtin.stat:
+        path: /opt/resolve/bin/resolve
+      register: resolve_binary
+      failed_when: not resolve_binary.stat.exists
+
+    # STEP 3: Configure Database and Project Paths
+    - name: Create shared Resolve directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0777'
+        owner: root
+        group: root
+      loop:
+        - /mnt/Library/_resolve
+        - /mnt/Library/_resolve/database
+        - /mnt/Library/_resolve/projects
+
+    - name: Create Resolve configuration directory in /etc/skel
+      ansible.builtin.file:
+        path: /etc/skel/.local/share/DaVinciResolve/configs
+        state: directory
+        mode: '0755'
+
+    - name: Create preferences.xml for database and project paths
+      ansible.builtin.copy:
+        content: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <preferences>
+            <ResolveDatabase>
+              <DatabasePath>/mnt/Library/_resolve/database</DatabasePath>
+            </ResolveDatabase>
+            <ProjectLibrary>
+              <ProjectPath>/mnt/Library/_resolve/projects</ProjectPath>
+            </ProjectLibrary>
+            <CacheClipsLocation>$HOME/.cache/resolve/CacheClip</CacheClipsLocation>
+            <GalleryStillsLocation>$HOME/.cache/resolve/Gallery</GalleryStillsLocation>
+            <ProxyMediaLocation>$HOME/.cache/resolve/Proxy</ProxyMediaLocation>
+          </preferences>
+        dest: /etc/skel/.local/share/DaVinciResolve/configs/preferences.xml
+        mode: '0644'
+
+    # STEP 4: Apply Configuration to Existing AD Users
+    - name: Apply configuration to existing AD users
+      ansible.builtin.shell: |
+        for user_home in /home/ad.noxvfx.com/*; do
+          if [ -d "$user_home" ]; then
+            user=$(basename "$user_home")
+            uid=$(id -u "$user" 2>/dev/null || echo 0)
+            if [ $uid -gt 400000000 ]; then
+              # Create config directory
+              mkdir -p "$user_home/.local/share/DaVinciResolve/configs"
+              
+              # Copy preferences
+              cp /etc/skel/.local/share/DaVinciResolve/configs/preferences.xml "$user_home/.local/share/DaVinciResolve/configs/"
+              
+              # Create cache directories
+              mkdir -p "$user_home/.cache/resolve/"{CacheClip,Gallery,Proxy}
+              
+              # Set ownership
+              chown -R "$user":"domain users@ad.noxvfx.com" "$user_home/.local/share/DaVinciResolve"
+              chown -R "$user":"domain users@ad.noxvfx.com" "$user_home/.cache/resolve"
+            fi
+          fi
+        done
+      args:
+        executable: /bin/bash
+
+    # Cleanup
+    - name: Clean up temporary installation files
+      ansible.builtin.file:
+        path: "{{ resolve_temp_dir }}"
+        state: absent
+
+    - name: Display installation completion message
+      ansible.builtin.debug:
+        msg: 
+          - "DaVinci Resolve Studio 20.2.1 installation completed!"
+          - "Shared database: /mnt/Library/_resolve/database"
+          - "Shared projects: /mnt/Library/_resolve/projects"
+          - "User cache: ~/.cache/resolve/"
+          - "All users (existing and new) will use shared workspace"
