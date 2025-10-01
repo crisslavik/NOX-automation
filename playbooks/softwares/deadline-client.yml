@@ -186,37 +186,15 @@
       loop: "{{ ad_user_homes.files }}"
       tags: desktop_shortcuts
 
-    - name: Copy Deadline Launcher desktop file for existing AD users
+    - name: Copy Deadline desktop files for existing AD users
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/deadlinelauncher10.desktop"
-        dest: "{{ item.path }}/.local/share/applications/deadlinelauncher10.desktop"
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.gid }}"
+        src: "{{ deadline_install_path }}/{{ item[1] }}"
+        dest: "{{ item[0].path }}/.local/share/applications/{{ item[1] }}"
+        owner: "{{ item[0].path | basename }}"
+        group: "{{ item[0].gid }}"
         mode: '0755'
         remote_src: yes
-      loop: "{{ ad_user_homes.files }}"
-      tags: desktop_shortcuts
-
-    - name: Copy Deadline Monitor desktop file for existing AD users
-      ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/deadlinemonitor10.desktop"
-        dest: "{{ item.path }}/.local/share/applications/deadlinemonitor10.desktop"
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.gid }}"
-        mode: '0755'
-        remote_src: yes
-      loop: "{{ ad_user_homes.files }}"
-      tags: desktop_shortcuts
-
-    - name: Copy Deadline Worker desktop file for existing AD users
-      ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/deadlineworker10.desktop"
-        dest: "{{ item.path }}/.local/share/applications/deadlineworker10.desktop"
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.gid }}"
-        mode: '0755'
-        remote_src: yes
-      loop: "{{ ad_user_homes.files }}"
+      loop: "{{ ad_user_homes.files | product(['deadlinelauncher10.desktop', 'deadlinemonitor10.desktop', 'deadlineworker10.desktop']) | list }}"
       tags: desktop_shortcuts
 
     - name: Create .local/share/applications directory in /etc/skel
@@ -226,28 +204,23 @@
         mode: '0755'
       tags: desktop_shortcuts
 
-    - name: Copy Deadline Launcher desktop file to /etc/skel
+    - name: Copy Deadline desktop files to /etc/skel
       ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/deadlinelauncher10.desktop"
-        dest: /etc/skel/.local/share/applications/deadlinelauncher10.desktop
+        src: "{{ deadline_install_path }}/{{ item }}"
+        dest: /etc/skel/.local/share/applications/{{ item }}
         mode: '0755'
         remote_src: yes
+      loop:
+        - deadlinelauncher10.desktop
+        - deadlinemonitor10.desktop
+        - deadlineworker10.desktop
       tags: desktop_shortcuts
 
-    - name: Copy Deadline Monitor desktop file to /etc/skel
-      ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/deadlinemonitor10.desktop"
-        dest: /etc/skel/.local/share/applications/deadlinemonitor10.desktop
-        mode: '0755'
-        remote_src: yes
-      tags: desktop_shortcuts
-
-    - name: Copy Deadline Worker desktop file to /etc/skel
-      ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/deadlineworker10.desktop"
-        dest: /etc/skel/.local/share/applications/deadlineworker10.desktop
-        mode: '0755'
-        remote_src: yes
+    - name: Set desktop files as trusted for existing AD users
+      ansible.builtin.command:
+        cmd: gio set {{ item[0].path }}/.local/share/applications/{{ item[1] }} metadata::trusted yes
+      become_user: "{{ item[0].path | basename }}"
+      loop: "{{ ad_user_homes.files | product(['deadlinelauncher10.desktop', 'deadlinemonitor10.desktop', 'deadlineworker10.desktop']) | list }}"
       tags: desktop_shortcuts
 
     # STEP 7: Configure Deadline Environment
