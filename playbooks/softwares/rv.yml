@@ -3,8 +3,12 @@
   hosts: all
   become: yes
   vars:
+    # --- Corrected Variables ---
+    # The extraction showed that the contents were placed directly in the destination, 
+    # so we'll match the standard install path for Autodesk products.
     rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
-    rv_install_path: "/opt/RV"
+    rv_install_path: "/opt/Autodesk/RV" 
+    rv_temp_dir_name: "RV-Linux-Rocky9-Release-2025.0.0" # This is often the name of the folder extracted inside the zip
   
   tasks:
     - name: Install RV dependencies
@@ -12,8 +16,16 @@
         name:
           - unzip
           - tcsh
-          - mesa-libGL
+          # --- Critical Dependency Fixes ---
+          # 1. Base OpenGL packages (used libglvnd-glx in troubleshooting, but libglvnd-devel pulls in more)
+          - libglvnd-devel
           - mesa-libGLU
+          # 2. Compatibility libraries (though often already installed)
+          - ncurses-compat-libs
+          # 3. Development/runtime libraries for image formats
+          - libjpeg-turbo-devel
+          - libtiff-devel
+          # --------------------------------
         state: present
 
     - name: Create RV installation directory
@@ -30,16 +42,21 @@
         dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         mode: '0644'
 
-    - name: Extract RV zip file to temp directory
+    - name: Extract RV zip file to target directory
+      # We extract directly into the final directory to avoid the shell command/nested folders.
+      # The unarchive module handles the 'unzip -d' equivalent.
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
-        dest: "/tmp/"
+        dest: "{{ rv_install_path }}"
         remote_src: yes
+        # The 'extra_opts' or 'unzip_opts' parameter can be tricky with unarchive. 
+        # By setting the dest to the final path, it generally extracts correctly.
 
-    - name: Copy RV contents from extracted folder to /opt/RV
-      shell: "cp -r /tmp/RV/* {{ rv_install_path }}/"
-      args:
-        creates: "{{ rv_install_path }}/bin/rv"
+    # --- REMOVED: No longer needed. The unarchive module extracts directly. ---
+    # - name: Copy RV contents from extracted folder to /opt/Autodesk/RV
+    #   shell: "cp -r /tmp/RV/* {{ rv_install_path }}/"
+    #   args:
+    #     creates: "{{ rv_install_path }}/bin/rv"
 
     - name: Set proper permissions on RV directory
       file:
@@ -58,10 +75,12 @@
         mode: 'u=rwx,g=rx,o=rx'
 
     - name: Run RV protocol handler installation
+      # Note: The command must be run using the full path to the executable.
       command: "{{ rv_install_path }}/bin/rv.install_handler"
       changed_when: true
       ignore_errors: yes
 
+    # --- CRITICAL FIX: Environment Setup Script ---
     - name: Create RV environment setup script
       copy:
         dest: /etc/profile.d/rv.sh
@@ -70,9 +89,10 @@
           #!/bin/bash
           # Autodesk RV Environment Setup
           
-          export RV_HOME=/opt/RV
-          export PATH=$RV_HOME/bin:$PATH
+          export RV_HOME="{{ rv_install_path }}"
+          # CRITICAL: Add the RV bundled 'lib' folder to LD_LIBRARY_PATH
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
+          export PATH=$RV_HOME/bin:$PATH
 
     - name: Create RV desktop entry for all users
       copy:
@@ -84,8 +104,8 @@
           Type=Application
           Name=Autodesk RV
           Comment=Media review and playback software
-          Exec=/opt/RV/bin/rv
-          Icon=/opt/RV/resources/RV.ico
+          Exec={{ rv_install_path }}/bin/rv
+          Icon={{ rv_install_path }}/resources/RV.ico
           Terminal=false
           Categories=Graphics;Video;AudioVideo;
           StartupNotify=true
@@ -105,8 +125,5 @@
 
     - name: Clean up temporary files
       file:
-        path: "{{ item }}"
+        path: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         state: absent
-      loop:
-        - "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
-        - "/tmp/RV"
