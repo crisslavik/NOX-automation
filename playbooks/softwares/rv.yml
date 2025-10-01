@@ -5,9 +5,9 @@
   vars:
     # --- Installation Path Variables ---
     # This is the final path where the RV files will reside (e.g., /opt/RV/bin/rv)
-    rv_final_path: "/opt/RV"
+    rv_final_path: "/opt/Autodesk/RV"
     # This is the parent directory for extraction (to avoid the double-folder issue)
-    rv_extract_parent_path: "/opt"
+    rv_extract_parent_path: "/opt/Autodesk"
     # Source file details (must exist in your Ansible 'files' directory)
     rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
   
@@ -24,6 +24,10 @@
           # CRITICAL: Qt XCB Fix (Resolves 'xcb-cursor0' error)
           - libXcursor 
           # Image Format Libraries
+          - xcb-util-cursor
+          - qt6-qtbase-gui
+          - compat-openssl11
+          - pcre-devel
           - libjpeg-turbo-devel
           - libtiff-devel
         state: present
