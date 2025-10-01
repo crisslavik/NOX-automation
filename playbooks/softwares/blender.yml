@@ -1,0 +1,174 @@
+---
+- name: Install Blender 4.5.0 with Deadline integration on AlmaLinux 9.6
+  hosts: all
+  become: yes
+  vars:
+    blender_version: "4.5.0"
+    blender_download_url: "https://download.blender.org/release/Blender4.5/blender-{{ blender_version }}-linux-x64.tar.xz"
+    blender_install_path: "/opt/blender/{{ blender_version }}"
+    blender_tarball_dest: "/tmp/blender-{{ blender_version }}-linux-x64.tar.xz"
+    ad_home_base: "/home/ad.noxvfx.com"
+    blender_config_path: ".config/blender/{{ blender_version }}"
+    deadline_repo: "/mnt/Library/_deadlinerepo/repository"
+    deadline_bin: "{{ deadline_repo }}/../bin"
+
+  tasks:
+    # ===== STEP 1: Directory Setup =====
+    - name: Create Blender installation directory
+      file:
+        path: "{{ blender_install_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Download Blender tarball
+      get_url:
+        url: "{{ blender_download_url }}"
+        dest: "{{ blender_tarball_dest }}"
+        mode: '0644'
+        timeout: 300
+
+    # ===== STEP 2: Install Dependencies =====
+    - name: Install Blender dependencies
+      dnf:
+        name:
+          - libXrender
+          - libXi
+          - libXxf86vm
+          - libXfixes
+          - libXinerama
+          - libGL
+          - libSM
+          - libICE
+          - libgomp
+          - mesa-libGLU
+          - libXrandr
+          - libXcursor
+          - alsa-lib
+          - pulseaudio-libs
+          - jack-audio-connection-kit
+        state: present
+
+    # ===== STEP 3: Extract and Install Blender =====
+    - name: Extract Blender tarball
+      unarchive:
+        src: "{{ blender_tarball_dest }}"
+        dest: "{{ blender_install_path }}"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+        owner: root
+        group: root
+
+    - name: Create Blender symlink
+      file:
+        src: "{{ blender_install_path }}/blender"
+        dest: "/usr/local/bin/blender"
+        state: link
+        force: yes
+
+    - name: Verify Blender installation
+      command: "{{ blender_install_path }}/blender --version"
+      register: blender_version_check
+      changed_when: false
+
+    - name: Display Blender version
+      debug:
+        msg: "{{ blender_version_check.stdout }}"
+
+    # ===== STEP 4: Configure for Existing AD Users =====
+    - name: Find all existing AD users (UID > 400000000)
+      shell: "getent passwd | awk -F: '$3 > 400000000 {print $1\":\"$6}'"
+      register: ad_users
+      changed_when: false
+
+    - name: Create Blender config directory for existing AD users
+      file:
+        path: "{{ item.split(':')[1] }}/{{ blender_config_path }}/scripts/startup"
+        state: directory
+        mode: '0755'
+        owner: "{{ item.split(':')[0] }}"
+        group: "domain users"
+      loop: "{{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
+
+    - name: Create userpref.blend for existing AD users
+      copy:
+        dest: "{{ item.split(':')[1] }}/{{ blender_config_path }}/config/userpref.blend"
+        content: ""
+        mode: '0644'
+        owner: "{{ item.split(':')[0] }}"
+        group: "domain users"
+        force: no
+      loop: "{{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
+
+    # ===== STEP 5: Configure for New Users (via /etc/skel) =====
+    - name: Create Blender config structure in /etc/skel
+      file:
+        path: "/etc/skel/{{ blender_config_path }}/scripts/startup"
+        state: directory
+        mode: '0755'
+
+    - name: Create Blender config directory in /etc/skel
+      file:
+        path: "/etc/skel/{{ blender_config_path }}/config"
+        state: directory
+        mode: '0755'
+
+    - name: Create placeholder userpref.blend in /etc/skel
+      copy:
+        dest: "/etc/skel/{{ blender_config_path }}/config/userpref.blend"
+        content: ""
+        mode: '0644'
+        force: no
+
+    # ===== STEP 6: Deadline Integration =====
+    - name: Verify Deadline repository exists
+      stat:
+        path: "{{ deadline_repo }}"
+      register: deadline_check
+
+    - name: Fail if Deadline repository not found
+      fail:
+        msg: "Deadline repository not found at {{ deadline_repo }}"
+      when: not deadline_check.stat.exists
+
+    - name: Configure Deadline Blender plugin - Set Blender executable path
+      lineinfile:
+        path: "{{ deadline_repo }}/plugins/Blender/Blender.param"
+        regexp: '^RenderExecutable='
+        line: "RenderExecutable={{ blender_install_path }}/blender"
+        create: yes
+        mode: '0644'
+      when: deadline_check.stat.exists
+
+    - name: Create Deadline environment configuration for Blender
+      copy:
+        dest: "/etc/profile.d/blender_deadline.sh"
+        content: |
+          #!/bin/bash
+          export BLENDER_USER_SCRIPTS="{{ blender_install_path }}/scripts"
+          export BLENDER_SYSTEM_SCRIPTS="{{ blender_install_path }}/scripts"
+        mode: '0755'
+
+    - name: Set Blender executable permissions
+      file:
+        path: "{{ blender_install_path }}/blender"
+        mode: '0755'
+
+    # ===== STEP 7: Cleanup =====
+    - name: Remove Blender tarball
+      file:
+        path: "{{ blender_tarball_dest }}"
+        state: absent
+
+    # ===== FINAL VERIFICATION =====
+    - name: Final verification message
+      debug:
+        msg:
+          - "Blender {{ blender_version }} installed successfully at {{ blender_install_path }}"
+          - "Symlink created at /usr/local/bin/blender"
+          - "Deadline repository: {{ deadline_repo }}"
+          - "Configuration applied for existing AD users and /etc/skel for new users"
+          - "To submit Blender jobs to Deadline, use the Deadline Monitor or deadlinecommand"
