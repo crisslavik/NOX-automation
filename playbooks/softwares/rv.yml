@@ -6,7 +6,7 @@
     # --- Installation Path Variables ---
     # This is the final path where the RV files will reside (e.g., /opt/RV/bin/rv)
     rv_final_path: "/opt/RV"
-    # This is the parent directory for extraction to avoid the double-folder issue
+    # This is the parent directory for extraction (to avoid the double-folder issue)
     rv_extract_parent_path: "/opt"
     # Source file details (must exist in your Ansible 'files' directory)
     rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
@@ -17,12 +17,13 @@
         name:
           - unzip
           - tcsh
-          # CRITICAL: OpenGL/Graphics Libraries
+          # CRITICAL: Graphics Libraries (Resolves libOpenGL.so.0)
           - libglvnd-devel
           - mesa-libGLU
-          # CRITICAL: Compatibility Libraries (needed for legacy RV components)
           - ncurses-compat-libs
-          # CRITICAL: Image Format Libraries
+          # CRITICAL: Qt XCB Fix (Resolves 'xcb-cursor0' error)
+          - libXcursor 
+          # Image Format Libraries
           - libjpeg-turbo-devel
           - libtiff-devel
         state: present
@@ -57,12 +58,13 @@
         mode: 'u=rwx,g=rx,o=rx'
 
     - name: 6. Run RV protocol handler installation
+      # FIX: Corrected filename from rv.install_handler to rv.install_handler_linux
       command: "{{ rv_final_path }}/bin/rv.install_handler_linux"
       changed_when: true
       ignore_errors: yes
 
     - name: 7. Create RV environment setup script in /etc/profile.d/
-      # CRITICAL FIX: Sets LD_LIBRARY_PATH so RV can find its bundled Qt, OpenEXR, etc., libraries.
+      # CRITICAL FIX: Sets LD_LIBRARY_PATH for ALL users (including AD/LDAP users).
       copy:
         dest: /etc/profile.d/rv.sh
         mode: '0755'
@@ -71,6 +73,7 @@
           # Autodesk RV Environment Setup
           
           export RV_HOME="{{ rv_final_path }}"
+          # CRITICAL: Add the RV bundled 'lib' folder to LD_LIBRARY_PATH
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
           export PATH=$RV_HOME/bin:$PATH
 
