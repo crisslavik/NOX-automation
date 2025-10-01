@@ -47,7 +47,6 @@
           - libXcursor
           - alsa-lib
           - pulseaudio-libs
-          - jack-audio-connection-kit
         state: present
 
     # ===== STEP 3: Extract and Install Blender =====
