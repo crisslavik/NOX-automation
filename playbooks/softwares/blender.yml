@@ -122,16 +122,19 @@
         mode: '0644'
         force: no
 
-    # ===== STEP 6: Deadline Integration =====
+# ===== STEP 6: Deadline Integration =====
     - name: Verify Deadline repository exists
       stat:
         path: "{{ deadline_repo }}"
       register: deadline_check
+      failed_when: false
 
-    - name: Fail if Deadline repository not found
-      fail:
-        msg: "Deadline repository not found at {{ deadline_repo }}"
-      when: not deadline_check.stat.exists
+    - name: Check if Deadline repository is writable
+      command: test -w "{{ deadline_repo }}/plugins/Blender"
+      register: deadline_writable
+      failed_when: false
+      changed_when: false
+      when: deadline_check.stat.exists
 
     - name: Configure Deadline Blender plugin - Set Blender executable path
       lineinfile:
@@ -140,7 +143,11 @@
         line: "RenderExecutable={{ blender_install_path }}/blender"
         create: yes
         mode: '0644'
-      when: deadline_check.stat.exists
+        unsafe_writes: yes
+      when: 
+        - deadline_check.stat.exists
+        - deadline_writable.rc == 0
+      register: deadline_config
 
     - name: Create Deadline environment configuration for Blender
       copy:
@@ -155,6 +162,21 @@
       file:
         path: "{{ blender_install_path }}/blender"
         mode: '0755'
+
+    - name: Display Deadline configuration status
+      debug:
+        msg: >
+          {% if not deadline_check.stat.exists %}
+          WARNING: Deadline repository not found at {{ deadline_repo }}. 
+          Blender installed but Deadline integration skipped. 
+          Mount the repository and configure manually or re-run playbook.
+          {% elif deadline_writable.rc != 0 %}
+          WARNING: Deadline repository is read-only. 
+          Blender installed but cannot write Deadline configuration.
+          Configure Deadline Blender plugin manually on the master node.
+          {% else %}
+          SUCCESS: Deadline Blender plugin configured at {{ deadline_repo }}/plugins/Blender/Blender.param
+          {% endif %}
 
     # ===== STEP 7: Cleanup =====
     - name: Remove Blender tarball
