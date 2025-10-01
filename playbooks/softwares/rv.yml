@@ -3,12 +3,10 @@
   hosts: all
   become: yes
   vars:
-    # --- Corrected Variables ---
-    # The extraction showed that the contents were placed directly in the destination, 
-    # so we'll match the standard install path for Autodesk products.
+    # --- Installation Path Reverted to /opt/RV ---
     rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
-    rv_install_path: "/opt/Autodesk/RV" 
-    rv_temp_dir_name: "RV-Linux-Rocky9-Release-2025.0.0" # This is often the name of the folder extracted inside the zip
+    rv_install_path: "/opt/RV" 
+    rv_temp_dir_name: "RV-Linux-Rocky9-Release-2025.0.0" 
   
   tasks:
     - name: Install RV dependencies
@@ -16,16 +14,12 @@
         name:
           - unzip
           - tcsh
-          # --- Critical Dependency Fixes ---
-          # 1. Base OpenGL packages (used libglvnd-glx in troubleshooting, but libglvnd-devel pulls in more)
+          # Critical dependency fixes found during troubleshooting:
           - libglvnd-devel
           - mesa-libGLU
-          # 2. Compatibility libraries (though often already installed)
           - ncurses-compat-libs
-          # 3. Development/runtime libraries for image formats
           - libjpeg-turbo-devel
           - libtiff-devel
-          # --------------------------------
         state: present
 
     - name: Create RV installation directory
@@ -43,20 +37,11 @@
         mode: '0644'
 
     - name: Extract RV zip file to target directory
-      # We extract directly into the final directory to avoid the shell command/nested folders.
-      # The unarchive module handles the 'unzip -d' equivalent.
+      # Extracts the contents (bin, lib, etc.) directly into /opt/RV
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         dest: "{{ rv_install_path }}"
         remote_src: yes
-        # The 'extra_opts' or 'unzip_opts' parameter can be tricky with unarchive. 
-        # By setting the dest to the final path, it generally extracts correctly.
-
-    # --- REMOVED: No longer needed. The unarchive module extracts directly. ---
-    # - name: Copy RV contents from extracted folder to /opt/Autodesk/RV
-    #   shell: "cp -r /tmp/RV/* {{ rv_install_path }}/"
-    #   args:
-    #     creates: "{{ rv_install_path }}/bin/rv"
 
     - name: Set proper permissions on RV directory
       file:
@@ -75,12 +60,11 @@
         mode: 'u=rwx,g=rx,o=rx'
 
     - name: Run RV protocol handler installation
-      # Note: The command must be run using the full path to the executable.
       command: "{{ rv_install_path }}/bin/rv.install_handler"
       changed_when: true
       ignore_errors: yes
 
-    # --- CRITICAL FIX: Environment Setup Script ---
+    # --- CRITICAL FIX: Environment Setup Script with /opt/RV path ---
     - name: Create RV environment setup script
       copy:
         dest: /etc/profile.d/rv.sh
@@ -113,15 +97,6 @@
     - name: Update desktop database
       command: update-desktop-database /usr/share/applications/
       changed_when: false
-
-    - name: Verify RV installation
-      stat:
-        path: "{{ rv_install_path }}/bin/rv"
-      register: rv_binary
-
-    - name: Display installation status
-      debug:
-        msg: "RV binary exists: {{ rv_binary.stat.exists }}"
 
     - name: Clean up temporary files
       file:
