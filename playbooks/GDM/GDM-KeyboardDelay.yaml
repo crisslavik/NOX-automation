@@ -3,13 +3,11 @@
   hosts: all
   become: yes
   tasks:
-    - name: Configure GDM to use X11 and auto-login
+    - name: Configure GDM to use X11 (no auto-login)
       copy:
         dest: /etc/gdm/custom.conf
         content: |
           [daemon]
-          AutomaticLoginEnable=True
-          AutomaticLogin=dcvsession
           WaylandEnable=false
           DefaultSession=gnome-xorg.desktop
         mode: '0644'
