@@ -64,6 +64,7 @@
       ansible.builtin.dnf:
         name:
           - kernel-devel
+          - epel-release
           - kernel-headers
           - gcc
           - make
