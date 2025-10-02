@@ -1,0 +1,60 @@
+---
+# Fix Black Screen - Rebuild NVIDIA Modules
+- name: Fix NVIDIA Black Screen (Rebuild Modules)
+  hosts: nox-cmp-04,nox-cmp-06
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Check current kernel version
+      ansible.builtin.command: uname -r
+      register: kernel_version
+      changed_when: false
+
+    - name: Display kernel info
+      ansible.builtin.debug:
+        msg: "Current kernel: {{ kernel_version.stdout }}"
+
+    - name: Ensure matching kernel-devel is installed
+      ansible.builtin.dnf:
+        name: "kernel-devel-{{ kernel_version.stdout }}"
+        state: present
+
+    - name: Remove any existing NVIDIA modules from initramfs
+      ansible.builtin.command: dracut --force --omit-drivers nouveau
+      changed_when: true
+
+    - name: Force rebuild NVIDIA DKMS modules
+      ansible.builtin.shell: |
+        dkms autoinstall -k {{ kernel_version.stdout }}
+      register: dkms_build
+      changed_when: true
+      ignore_errors: yes
+
+    - name: Display DKMS build result
+      ansible.builtin.debug:
+        msg: "{{ dkms_build.stdout }}"
+
+    - name: Load NVIDIA kernel modules
+      ansible.builtin.shell: |
+        modprobe nvidia
+        modprobe nvidia-drm
+        modprobe nvidia-modeset
+      ignore_errors: yes
+      changed_when: true
+
+    - name: Verify NVIDIA modules loaded
+      ansible.builtin.shell: lsmod | grep nvidia
+      register: nvidia_loaded
+      changed_when: false
+      failed_when: false
+
+    - name: Display loaded modules
+      ansible.builtin.debug:
+        msg: "{{ nvidia_loaded.stdout }}"
+
+    - name: Reboot to fully activate NVIDIA
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting to activate NVIDIA drivers"
+      when: nvidia_loaded.rc != 0
