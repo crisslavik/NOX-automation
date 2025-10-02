@@ -3,8 +3,8 @@
   hosts: all
   become: yes
   vars:
-    wallpaper_source: "files/NOX_Wallpaper.jpg"
-    logo_source: "files/NOX_Logo.png"  # Optional - comment out if you don't have a logo
+    wallpaper_source: "NOX_Wallpaper.jpg"
+    logo_source: "NOX_Logo.png"
     wallpaper_path: "/usr/share/backgrounds/nox-wallpaper.jpg"
     logo_path: "/usr/share/pixmaps/nox-logo.png"
 
@@ -151,7 +151,7 @@
         dest: /usr/local/bin/set-nox-wallpaper.sh
         mode: '0755'
 
-    - name: Create autostart desktop entry
+    - name: Create autostart desktop entry directory
       ansible.builtin.file:
         path: /etc/xdg/autostart
         state: directory
@@ -184,7 +184,7 @@
         dest: /etc/profile.d/Z99-nox-wallpaper.sh
         mode: '0755'
 
-# ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
+    # ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
     - name: Create script to apply wallpaper to logged-in users
       ansible.builtin.copy:
         content: |
