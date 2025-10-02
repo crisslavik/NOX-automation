@@ -1,5 +1,5 @@
 ---
-- name: Complete NOX wallpaper deployment (Users + GDM)
+- name: Complete NOX wallpaper deployment (Users + GDM) - X11 & DCV Compatible
   hosts: all
   become: yes
   vars:
@@ -104,15 +104,29 @@
       ansible.builtin.copy:
         content: |
           #!/bin/bash
-          # NOX Wallpaper setter for AD users
+          # NOX Wallpaper setter for AD users (X11 + Nice-DCV compatible)
           
-          # Wait for GNOME session to be ready
+          # Wait for session to be ready
           sleep 10
           
-          # Set up environment
-          if [ -z "$DISPLAY" ]; then export DISPLAY=:0; fi
+          # Detect DISPLAY if not set
+          if [ -z "$DISPLAY" ]; then
+              # Try to find user's actual DISPLAY
+              DISPLAY=$(who | grep "($USER)" | sed 's/.*(\(.*\)).*/\1/' | head -n1)
+              if [ -z "$DISPLAY" ]; then
+                  DISPLAY=:0
+              fi
+              export DISPLAY
+          fi
+          
+          # Set DBUS
           if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
               export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+          fi
+          
+          # Set XAUTHORITY for X11
+          if [ -z "$XAUTHORITY" ]; then
+              export XAUTHORITY="$HOME/.Xauthority"
           fi
           
           # Wait for gsettings to be available
@@ -132,7 +146,7 @@
               gsettings set org.gnome.desktop.background picture-options 'zoom'
               gsettings set org.gnome.desktop.screensaver picture-uri "file://{{ wallpaper_path }}"
               
-              logger "NOX wallpaper set for user $(whoami) on $(hostname)"
+              logger "NOX wallpaper set for user $(whoami) on $(hostname) DISPLAY=$DISPLAY"
           fi
         dest: /usr/local/bin/set-nox-wallpaper.sh
         mode: '0755'
@@ -177,10 +191,30 @@
           if [ -n "$user" ] && [ "$user" != "gdm" ]; then
             user_id=$(id -u "$user" 2>/dev/null)
             if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
+              
+              # Detect user's DISPLAY (handles :0, :1, :2 for DCV sessions)
+              user_display=$(ps e -u "$user" | grep -oP 'DISPLAY=\K[^ ]+' | head -n1)
+              if [ -z "$user_display" ]; then
+                user_display=":0"
+              fi
+              
+              # Set XAUTHORITY
+              user_xauth=$(eval echo ~$user)/.Xauthority
+              
+              # Apply wallpaper with proper environment
+              sudo -u "$user" \
+                DISPLAY="$user_display" \
+                XAUTHORITY="$user_xauth" \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
                 gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_path }}" 2>/dev/null || true
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
+              
+              sudo -u "$user" \
+                DISPLAY="$user_display" \
+                XAUTHORITY="$user_xauth" \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
                 gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_path }}" 2>/dev/null || true
+              
+              echo "Applied wallpaper for $user on DISPLAY $user_display"
             fi
           fi
         done
@@ -212,8 +246,18 @@
           echo "   GDM dconf: $(ls -la /etc/dconf/db/gdm.d/01-nox-branding 2>/dev/null || echo 'NOT FOUND')"
           echo "   Autostart: $(ls -la /etc/xdg/autostart/nox-wallpaper.desktop 2>/dev/null || echo 'NOT FOUND')"
           echo
-          echo "3. Current user wallpaper (if logged in):"
-          gsettings get org.gnome.desktop.background picture-uri 2>/dev/null || echo "Not available (not in GNOME session)"
+          echo "3. Active X11 sessions:"
+          who | grep -v grep
+          echo
+          echo "4. Current user wallpaper (if logged in):"
+          if [ -n "$DISPLAY" ]; then
+            gsettings get org.gnome.desktop.background picture-uri 2>/dev/null || echo "Not available"
+          else
+            echo "No DISPLAY set (not in graphical session)"
+          fi
+          echo
+          echo "5. Active GNOME sessions:"
+          ps aux | grep gnome-session | grep -v grep | awk '{print "User: " $1 " | PID: " $2}'
           echo
           echo "=== To see changes: Log out and back in, or reboot ==="
         dest: /usr/local/bin/verify-nox-wallpaper.sh
@@ -230,6 +274,7 @@
           ✅ Screensaver wallpaper
           ✅ Autostart script for new logins
           ✅ System-wide dconf settings
+          ✅ X11 and Nice-DCV compatibility
           
           To verify: Run /usr/local/bin/verify-nox-wallpaper.sh
           
@@ -237,6 +282,7 @@
           - Immediately for some logged-in users
           - On next login for all users
           - On login screen after logout/reboot
+          - For Nice-DCV remote sessions
 
   handlers:
     - name: update dconf
