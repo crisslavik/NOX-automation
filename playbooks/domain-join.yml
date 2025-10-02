@@ -11,7 +11,6 @@
     
     # NFS configuration
     nfs_server: "192.168.11.9"
-    autofs_base_path: "/mnt"
     
     # Public mounts (all users)
     nfs_mounts_public:
@@ -47,7 +46,6 @@
           - krb5-workstation
           - nfs-utils
           - autofs
-          - xfsprogs
           - policycoreutils-python-utils
         state: present
 
@@ -212,24 +210,24 @@
         line: "Domain = {{ domain_name }}"
         backup: yes
 
-
-    # Autofs configuration for per-user NFS mounts
-    - name: Configure autofs master map
+    # Autofs configuration using DIRECT maps to avoid /mnt conflicts
+    - name: Configure autofs master map for direct mounts (no timeout)
       ansible.builtin.lineinfile:
         path: /etc/auto.master
-        line: "/mnt /etc/auto.nfs --timeout=60"
+        regexp: '^/[-mnt]'
+        line: "/- /etc/auto.direct --timeout=0"
         state: present
         backup: yes
       notify: restart autofs
 
-    - name: Create autofs NFS map file for public mounts
+    - name: Create autofs direct map file for public mounts
       ansible.builtin.copy:
         content: |
-          # Public mounts (all users)
+          # Public mounts (all users) - DIRECT MAP
           {% for mount in nfs_mounts_public %}
-          {{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
+          /mnt/{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
           {% endfor %}
-        dest: /etc/auto.nfs
+        dest: /etc/auto.direct
         mode: '0644'
         backup: yes
       notify: restart autofs
@@ -254,7 +252,7 @@
           
           # Add public mounts bookmarks for all users
           {% for mount in nfs_mounts_public %}
-          BOOKMARK="file://{{ autofs_base_path }}/{{ mount.dest }} {{ mount.dest }}"
+          BOOKMARK="file:///mnt/{{ mount.dest }} {{ mount.dest }}"
           if ! grep -Fxq "$BOOKMARK" "$BOOKMARKS_FILE" 2>/dev/null; then
               echo "$BOOKMARK" >> "$BOOKMARKS_FILE"
           fi
@@ -263,7 +261,7 @@
           # Add NOX Admins bookmarks if user is member of the group
           if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
               {% for mount in nfs_mounts_noxadmins %}
-              BOOKMARK="file://{{ autofs_base_path }}/{{ mount.dest }} {{ mount.dest }}"
+              BOOKMARK="file:///mnt/{{ mount.dest }} {{ mount.dest }}"
               if ! grep -Fxq "$BOOKMARK" "$BOOKMARKS_FILE" 2>/dev/null; then
                   echo "$BOOKMARK" >> "$BOOKMARKS_FILE"
               fi
@@ -292,19 +290,10 @@
           
           # Check if user is member of "nox-admins" group (as seen by Linux)
           if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
-              # Create NOX Admins autofs map if it doesn't exist
-              if [ ! -f /etc/auto.nfs.noxadmins ]; then
-                  cat > /etc/auto.nfs.noxadmins << 'EOF'
-          {% for mount in nfs_mounts_noxadmins %}
-          {{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
-          {% endfor %}
-          EOF
-              fi
-              
-              # Add NOX Admins mounts to auto.nfs if not present
+              # Add NOX Admins mounts to auto.direct if not present (DIRECT MAP format)
               {% for mount in nfs_mounts_noxadmins %}
-              if ! grep -q "^{{ mount.dest }}" /etc/auto.nfs; then
-                  echo "{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}" >> /etc/auto.nfs
+              if ! grep -q "^/mnt/{{ mount.dest }}" /etc/auto.direct; then
+                  echo "/mnt/{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}" >> /etc/auto.direct
               fi
               {% endfor %}
               
