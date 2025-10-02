@@ -3,8 +3,8 @@
   hosts: all
   become: yes
   vars:
-    wallpaper_source: "NOX_Wallpaper.jpg"
-    logo_source: "NOX_Logo.png"  # Optional - comment out if you don't have a logo
+    wallpaper_source: "files/NOX_Wallpaper.jpg"
+    logo_source: "files/NOX_Logo.png"  # Optional - comment out if you don't have a logo
     wallpaper_path: "/usr/share/backgrounds/nox-wallpaper.jpg"
     logo_path: "/usr/share/pixmaps/nox-logo.png"
 
