@@ -48,6 +48,7 @@
           - nfs-utils
           - autofs
           - xfsprogs
+          - policycoreutils-python-utils
         state: present
 
     - name: Start and enable required services
@@ -131,6 +132,67 @@
         group: root
         backup: yes
       notify: restart sssd
+
+    # ====== FIX AD HOME DIRECTORY PERMISSIONS ======
+    - name: Set SELinux file context for AD home directories
+      ansible.builtin.command: semanage fcontext -a -t user_home_dir_t "/home/{{ domain_name }}(/.*)?"
+      register: semanage_result
+      failed_when: false
+      changed_when: semanage_result.rc == 0
+
+    - name: Apply SELinux contexts to existing AD home directories
+      ansible.builtin.command: restorecon -R -v /home/{{ domain_name }}/
+      when: semanage_result.rc == 0
+      ignore_errors: yes
+
+    - name: Create PAM script directory
+      ansible.builtin.file:
+        path: /usr/share/libpam-script
+        state: directory
+        mode: '0755'
+
+    - name: Create PAM script to setup .config directory on first login
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Setup .config directory for AD users on login
+          
+          USER_HOME=$(eval echo ~$PAM_USER)
+          
+          if [ -d "$USER_HOME" ]; then
+              # Create .config directory if it doesn't exist
+              if [ ! -d "$USER_HOME/.config" ]; then
+                  mkdir -p "$USER_HOME/.config/dconf"
+                  
+                  # Set ownership
+                  USER_UID=$(id -u "$PAM_USER")
+                  USER_GID=$(id -g "$PAM_USER")
+                  chown -R "$USER_UID:$USER_GID" "$USER_HOME/.config"
+                  
+                  # Set permissions
+                  chmod 700 "$USER_HOME/.config"
+                  chmod 700 "$USER_HOME/.config/dconf"
+                  
+                  # Restore SELinux context
+                  restorecon -R "$USER_HOME/.config" 2>/dev/null || true
+                  
+                  logger "Created .config directory for $PAM_USER"
+              fi
+              
+              # Fix permissions if .config exists but is not writable
+              if [ -d "$USER_HOME/.config" ] && [ ! -w "$USER_HOME/.config" ]; then
+                  USER_UID=$(id -u "$PAM_USER")
+                  USER_GID=$(id -g "$PAM_USER")
+                  chown -R "$USER_UID:$USER_GID" "$USER_HOME/.config"
+                  chmod 700 "$USER_HOME/.config"
+                  restorecon -R "$USER_HOME/.config" 2>/dev/null || true
+                  logger "Fixed .config permissions for $PAM_USER"
+              fi
+          fi
+          
+          exit 0
+        dest: /usr/share/libpam-script/pam_script_config_setup.sh
+        mode: '0755'
 
     - name: Add domain groups to sudoers
       ansible.builtin.lineinfile:
@@ -311,12 +373,6 @@
         state: started
         enabled: yes
 
-    - name: Create PAM script directory
-      ansible.builtin.file:
-        path: /usr/share/libpam-script
-        state: directory
-        mode: '0755'
-
     - name: Create script to add NFS bookmarks to GNOME Files
       ansible.builtin.copy:
         content: |
@@ -363,6 +419,9 @@
         content: |
           #!/bin/bash
           # This script runs when a user logs in
+          
+          # Setup .config directory first
+          /usr/share/libpam-script/pam_script_config_setup.sh
           
           # Check if user is member of "nox-admins" group (as seen by Linux)
           if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
