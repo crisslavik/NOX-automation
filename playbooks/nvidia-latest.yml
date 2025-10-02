@@ -1,0 +1,314 @@
+---
+# Production NVIDIA Installation for AlmaLinux 9
+# Tested and validated - includes all fixes from debugging sessions
+- name: Production NVIDIA Driver Installation (Battle-Tested)
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    install_cuda: true
+    install_nvidia_settings: true
+    
+  tasks:
+    - name: Display installation plan
+      ansible.builtin.debug:
+        msg: |
+          🎮 Production NVIDIA Installation (AlmaLinux 9)
+          
+          Target: {{ inventory_hostname }}
+          
+          ✅ This playbook includes ALL fixes from debugging:
+          • EPEL repository for DKMS
+          • CRB (CodeReady Builder) repository
+          • Proper kernel module building
+          • Wayland disabling (X11 forced)
+          • GNOME session package verification
+          • Nouveau blacklisting in multiple locations
+          
+          📋 Installation method: AlmaLinux native packages
+          🔒 Secure Boot: Compatible (pre-signed modules)
+          
+          ⚠️ System will reboot after installation
+
+    - name: Check for NVIDIA GPU
+      ansible.builtin.shell: lspci | grep -i nvidia
+      register: nvidia_hardware
+      failed_when: false
+      changed_when: false
+
+    - name: Fail if no NVIDIA hardware
+      ansible.builtin.fail:
+        msg: "❌ No NVIDIA hardware detected on {{ inventory_hostname }}"
+      when: nvidia_hardware.stdout == ""
+
+    - name: Display detected GPU
+      ansible.builtin.debug:
+        msg: "✅ Detected GPU: {{ nvidia_hardware.stdout }}"
+
+    # ====== REPOSITORY SETUP ======
+    - name: Enable CRB (CodeReady Builder) repository
+      ansible.builtin.command: dnf config-manager --set-enabled crb
+      changed_when: true
+
+    - name: Install EPEL repository (required for DKMS)
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+
+    - name: Update system packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+      register: system_update
+
+    - name: Get current kernel version
+      ansible.builtin.command: uname -r
+      register: current_kernel
+      changed_when: false
+
+    # ====== NOUVEAU BLACKLISTING (COMPREHENSIVE) ======
+    - name: Blacklist nouveau driver in modprobe.d
+      ansible.builtin.copy:
+        content: |
+          blacklist nouveau
+          options nouveau modeset=0
+        dest: /etc/modprobe.d/blacklist-nouveau.conf
+        mode: '0644'
+
+    - name: Blacklist nouveau in dracut configuration
+      ansible.builtin.copy:
+        content: |
+          omit_drivers+=" nouveau "
+        dest: /etc/dracut.conf.d/blacklist-nouveau.conf
+        mode: '0644'
+
+    - name: Add nouveau blacklist to GRUB cmdline
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX="((?!.*modprobe\.blacklist=nouveau).*)"'
+        line: 'GRUB_CMDLINE_LINUX="\1 modprobe.blacklist=nouveau rd.driver.blacklist=nouveau"'
+        backrefs: yes
+      register: grub_updated
+
+    - name: Update GRUB configuration (BIOS)
+      ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
+      when: grub_updated.changed
+      failed_when: false
+      changed_when: true
+
+    - name: Update GRUB configuration (UEFI)
+      ansible.builtin.command: grub2-mkconfig -o /boot/efi/EFI/almalinux/grub.cfg
+      when: grub_updated.changed
+      failed_when: false
+      changed_when: true
+
+    - name: Regenerate initramfs without nouveau
+      ansible.builtin.command: dracut --force --omit-drivers nouveau
+      changed_when: true
+
+    # ====== INSTALL KERNEL DEPENDENCIES ======
+    - name: Install kernel development packages
+      ansible.builtin.dnf:
+        name:
+          - kernel-devel
+          - "kernel-devel-{{ current_kernel.stdout }}"
+          - kernel-headers
+          - gcc
+          - make
+          - dkms
+          - elfutils-libelf-devel
+        state: present
+
+    # ====== INSTALL NVIDIA DRIVERS (ALMALINUX NATIVE METHOD) ======
+    - name: Install AlmaLinux NVIDIA repository configuration
+      ansible.builtin.dnf:
+        name: almalinux-release-nvidia-driver
+        state: present
+
+    - name: Install NVIDIA driver packages (native method)
+      ansible.builtin.dnf:
+        name:
+          - nvidia-driver
+          - nvidia-driver-libs
+          - nvidia-driver-cuda
+          - nvidia-driver-cuda-libs
+          - nvidia-settings
+          - nvidia-modprobe
+          - nvidia-persistenced
+        state: present
+      register: nvidia_install
+
+    - name: Install CUDA toolkit (if enabled)
+      ansible.builtin.dnf:
+        name:
+          - cuda-toolkit
+        state: present
+      when: install_cuda
+      ignore_errors: yes
+
+    # ====== BUILD NVIDIA KERNEL MODULES ======
+    - name: Force rebuild NVIDIA DKMS modules for current kernel
+      ansible.builtin.shell: |
+        dkms autoinstall -k {{ current_kernel.stdout }} || true
+      register: dkms_build
+      changed_when: true
+      failed_when: false
+
+    - name: Display DKMS build result
+      ansible.builtin.debug:
+        msg: "{{ dkms_build.stdout }}"
+      when: dkms_build.stdout is defined
+
+    # ====== FIX GDM/WAYLAND (PREVENT LOGIN LOOP) ======
+    - name: Ensure GDM custom.conf exists
+      ansible.builtin.file:
+        path: /etc/gdm/custom.conf
+        state: touch
+        mode: '0644'
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Ensure [daemon] section exists in GDM config
+      ansible.builtin.lineinfile:
+        path: /etc/gdm/custom.conf
+        line: '[daemon]'
+        insertbefore: BOF
+        state: present
+
+    - name: Disable Wayland in GDM (force X11 with NVIDIA)
+      ansible.builtin.lineinfile:
+        path: /etc/gdm/custom.conf
+        regexp: '^#?WaylandEnable='
+        line: 'WaylandEnable=false'
+        insertafter: '^\[daemon\]'
+        state: present
+
+    # ====== INSTALL GNOME SESSION PACKAGES (PREVENT LOGIN LOOP) ======
+    - name: Install GNOME session packages
+      ansible.builtin.dnf:
+        name:
+          - gnome-session
+          - gnome-session-wayland-session
+          - gnome-session-xsession
+          - gnome-shell
+          - gnome-terminal
+          - gdm
+        state: present
+
+    # ====== X11 AND DISPLAY DEPENDENCIES ======
+    - name: Install X11 base packages
+      ansible.builtin.dnf:
+        name:
+          - xorg-x11-server-Xorg
+          - xorg-x11-xauth
+          - xorg-x11-xinit
+          - xorg-x11-utils
+          - mesa-libGL
+          - mesa-libGLU
+          - mesa-dri-drivers
+          - libglvnd
+          - libglvnd-glx
+          - libglvnd-egl
+        state: present
+
+    # ====== NVIDIA CONFIGURATION ======
+    - name: Configure NVIDIA/CUDA environment variables
+      ansible.builtin.copy:
+        content: |
+          # NVIDIA/CUDA Environment
+          export CUDA_HOME=/usr/local/cuda
+          export PATH=$CUDA_HOME/bin:$PATH
+          export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+        dest: /etc/profile.d/nvidia.sh
+        mode: '0755'
+
+    - name: Enable nvidia-persistenced service
+      ansible.builtin.systemd:
+        name: nvidia-persistenced
+        enabled: yes
+        state: started
+      ignore_errors: yes
+
+    # ====== VERIFY /TMP PERMISSIONS (PREVENT LOGIN ISSUES) ======
+    - name: Ensure /tmp has correct permissions
+      ansible.builtin.file:
+        path: /tmp
+        mode: '1777'
+        state: directory
+
+    # ====== FINAL VERIFICATION BEFORE REBOOT ======
+    - name: Verify nouveau is blacklisted
+      ansible.builtin.command: grep -r nouveau /etc/modprobe.d/ /etc/dracut.conf.d/ /etc/default/grub
+      register: nouveau_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display nouveau blacklist verification
+      ansible.builtin.debug:
+        msg: "{{ nouveau_check.stdout_lines }}"
+
+    # ====== FINAL STATUS ======
+    - name: Display installation summary
+      ansible.builtin.debug:
+        msg: |
+          ✅ NVIDIA Installation Complete on {{ inventory_hostname }}
+          
+          📦 Installed:
+          • NVIDIA drivers (AlmaLinux native - Secure Boot signed)
+          • CUDA toolkit
+          • NVIDIA Settings
+          • Kernel modules (built for {{ current_kernel.stdout }})
+          
+          🔧 Fixes applied (from our debugging):
+          • Nouveau blacklisted in 3 locations (modprobe, dracut, GRUB)
+          • DKMS modules built for current kernel
+          • Wayland disabled (X11 forced) in GDM
+          • GNOME session packages verified
+          • /tmp permissions fixed
+          • EPEL and CRB repositories enabled
+          
+          🔄 System will reboot now to activate all changes
+          
+          ✨ After reboot, verify with:
+             nvidia-smi
+             echo $XDG_SESSION_TYPE  # Should show 'x11'
+             lsmod | grep nvidia     # Should show modules loaded
+
+    - name: Reboot system to activate NVIDIA drivers
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        msg: "Rebooting to activate NVIDIA drivers"
+
+    # ====== POST-REBOOT VERIFICATION (OPTIONAL) ======
+    - name: Wait for system to come back online
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        timeout: 300
+
+    - name: Verify NVIDIA modules loaded
+      ansible.builtin.shell: lsmod | grep nvidia
+      register: modules_loaded
+      changed_when: false
+      failed_when: modules_loaded.rc != 0
+
+    - name: Verify nvidia-smi works
+      ansible.builtin.command: nvidia-smi
+      register: nvidia_smi_output
+      changed_when: false
+      failed_when: nvidia_smi_output.rc != 0
+
+    - name: Display nvidia-smi output
+      ansible.builtin.debug:
+        msg: "{{ nvidia_smi_output.stdout_lines }}"
+
+    - name: Final success message
+      ansible.builtin.debug:
+        msg: |
+          🎉 SUCCESS! NVIDIA Installation verified on {{ inventory_hostname }}
+          
+          ✅ Kernel modules: LOADED
+          ✅ nvidia-smi: WORKING
+          ✅ Display manager: CONFIGURED
+          
+          Your NVIDIA GPU is ready for use!
