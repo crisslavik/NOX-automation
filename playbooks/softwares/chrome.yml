@@ -27,11 +27,12 @@
     
     - name: Verify Chrome installation
       ansible.builtin.command:
-        cmd: flatpak list --app | grep com.google.Chrome
+        cmd: flatpak list --app --columns=application
       register: chrome_check
       changed_when: false
+      failed_when: false
     
     - name: Display installation result
       ansible.builtin.debug:
         msg: "✅ Google Chrome installed via Flatpak"
-      when: chrome_check.rc == 0
+      when: "'com.google.Chrome' in chrome_check.stdout"
