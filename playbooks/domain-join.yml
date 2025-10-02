@@ -47,6 +47,7 @@
           - krb5-workstation
           - nfs-utils
           - autofs
+          - xfsprogs
         state: present
 
     - name: Start and enable required services
@@ -201,7 +202,7 @@
             - format_confirmation.user_input | lower == 'yes'
 
         - name: Check if cache device is mounted
-          ansible.builtin.shell: "mount | grep -q {{ cache_device }}"
+          ansible.builtin.shell: "mount | grep {{ cache_device }}"
           register: device_mounted
           failed_when: false
           changed_when: false
@@ -213,16 +214,16 @@
             - cache_device is defined
             - device_mounted is defined
             - device_mounted.rc == 0
+          register: unmount_result
+          failed_when: unmount_result.rc != 0 and 'not mounted' not in unmount_result.stderr
 
-        - name: Format disk as ext4 with label Cache
+        - name: Format disk as XFS with label Cache
           ansible.builtin.filesystem:
-            fstype: ext4
+            fstype: xfs
             dev: "{{ cache_device }}"
             opts: -L Cache
             force: yes
-          when: 
-            - cache_device is defined
-            - device_mounted.rc != 0
+          when: cache_device is defined
 
         - name: Update cache_disk variable after formatting
           ansible.builtin.command: blkid -L Cache
@@ -262,8 +263,8 @@
       ansible.builtin.mount:
         path: /mnt/Cache
         src: "UUID={{ cache_uuid.stdout }}"
-        fstype: ext4
-        opts: defaults
+        fstype: xfs
+        opts: defaults,noatime
         state: present
         backup: yes
       when: cache_disk_path is defined and cache_uuid.stdout != ""
@@ -272,8 +273,8 @@
       ansible.builtin.mount:
         path: /mnt/Cache
         src: "UUID={{ cache_uuid.stdout }}"
-        fstype: ext4
-        opts: defaults
+        fstype: xfs
+        opts: defaults,noatime
         state: mounted
       when: cache_disk_path is defined and cache_uuid.stdout != ""
       register: cache_mount_result
