@@ -164,40 +164,65 @@
           changed_when: false
 
         - name: Find unformatted disks between 900GB and 1100GB
+          ansible.builtin.shell: |
+            lsblk -ndo NAME,SIZE,TYPE,FSTYPE -b | \
+            awk '$3=="disk" && $4=="" && $2>=900000000000 && $2<=1100000000000 {print $1}'
+          register: potential_cache_disks_raw
+          changed_when: false
+
+        - name: Set potential cache disks fact
           ansible.builtin.set_fact:
-            potential_cache_disks: "{{ all_disks.stdout_lines | 
-              select('search', 'disk') | 
-              select('search', '^[^ ]+\\s+(9[0-9]{11}|1[01][0-9]{11})\\s+disk\\s*$') | 
-              list }}"
+            potential_cache_disks: "{{ potential_cache_disks_raw.stdout_lines }}"
+          when: potential_cache_disks_raw.stdout_lines | length > 0
 
         - name: Display potential cache disks
           ansible.builtin.debug:
-            msg: "Found potential unformatted cache disks: {{ potential_cache_disks }}"
-          when: potential_cache_disks | length > 0
+            msg: "Found potential unformatted cache disk(s): {{ potential_cache_disks }}"
+          when: potential_cache_disks is defined and potential_cache_disks | length > 0
 
         - name: Prompt for confirmation to format disk
           ansible.builtin.pause:
             prompt: |
-              Found {{ potential_cache_disks | length }} unformatted disk(s) around 1TB.
-              Disk details: {{ potential_cache_disks }}
+              Host: {{ inventory_hostname }}
+              Found unformatted disk(s) around 1TB: {{ potential_cache_disks | join(', ') }}
               
-              Do you want to format the FIRST disk as Cache? (yes/no)
+              Do you want to format /dev/{{ potential_cache_disks[0] }} as Cache? (yes/no)
           register: format_confirmation
-          when: potential_cache_disks | length > 0
+          when: potential_cache_disks is defined and potential_cache_disks | length > 0
 
-        - name: Extract device name from first potential disk
+        - name: Set cache device to format
           ansible.builtin.set_fact:
-            cache_device: "/dev/{{ potential_cache_disks[0].split()[0] }}"
+            cache_device: "/dev/{{ potential_cache_disks[0] }}"
           when: 
+            - potential_cache_disks is defined
             - potential_cache_disks | length > 0
+            - format_confirmation is defined
+            - format_confirmation.user_input is defined
             - format_confirmation.user_input | lower == 'yes'
+
+        - name: Check if cache device is mounted
+          ansible.builtin.shell: "mount | grep -q {{ cache_device }}"
+          register: device_mounted
+          failed_when: false
+          changed_when: false
+          when: cache_device is defined
+
+        - name: Unmount cache device if mounted
+          ansible.builtin.command: "umount {{ cache_device }}"
+          when: 
+            - cache_device is defined
+            - device_mounted is defined
+            - device_mounted.rc == 0
 
         - name: Format disk as ext4 with label Cache
           ansible.builtin.filesystem:
             fstype: ext4
             dev: "{{ cache_device }}"
             opts: -L Cache
-          when: cache_device is defined
+            force: yes
+          when: 
+            - cache_device is defined
+            - device_mounted.rc != 0
 
         - name: Update cache_disk variable after formatting
           ansible.builtin.command: blkid -L Cache
@@ -210,7 +235,10 @@
     - name: Set cache disk path
       ansible.builtin.set_fact:
         cache_disk_path: "{{ cache_disk_labeled.stdout }}"
-      when: cache_disk_labeled.rc == 0
+      when: 
+        - cache_disk_labeled is defined
+        - cache_disk_labeled.rc is defined
+        - cache_disk_labeled.rc == 0
 
     - name: Display cache disk found
       ansible.builtin.debug:
@@ -253,7 +281,7 @@
     - name: Display cache mount result
       ansible.builtin.debug:
         msg: "Cache disk mounted successfully at /mnt/Cache"
-      when: cache_mount_result is defined and (cache_mount_result.changed or cache_mount_result is succeeded)
+      when: cache_mount_result is defined and cache_mount_result is succeeded
 
     # Autofs configuration for per-user NFS mounts
     - name: Configure autofs master map
