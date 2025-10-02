@@ -7,17 +7,21 @@
     domain_controller: "dc-1.ad.noxvfx.com"
     domain_admin_user: "noxadmin@AD.NOXVFX.COM"
     domain_realm: "AD.NOXVFX.COM"
-    # You'll be prompted for this password during playbook run
-    # Or set it in a vault file for security
     domain_admin_password: "{{ vault_domain_password | default('') }}"
     
-    # NFS mounts configuration
+    # NFS configuration
     nfs_server: "192.168.11.9"
-    nfs_mounts:
-      - { src: "/volume1/Projects", dest: "/mnt/Projects" }
-      - { src: "/volume1/Library", dest: "/mnt/Library" }
-#      - { src: "/volume1/Archive", dest: "/mnt/Archive" }
-#      - { src: "/volume2/Expansion1", dest: "/mnt/Expansion" }
+    autofs_base_path: "/mnt"
+    
+    # Public mounts (all users)
+    nfs_mounts_public:
+      - { src: "/volume1/Projects", dest: "Projects" }
+      - { src: "/volume1/Library", dest: "Library" }
+    
+    # Restricted mounts (NOX Admins only)
+    nfs_mounts_noxadmins:
+      - { src: "/volume1/Archive", dest: "Archive" }
+      - { src: "/volume2/Expansion1", dest: "Expansion" }
 
   tasks:
     - name: Update all packages
@@ -42,6 +46,7 @@
           - samba-common-tools
           - krb5-workstation
           - nfs-utils
+          - autofs
         state: present
 
     - name: Start and enable required services
@@ -144,22 +149,121 @@
         line: "Domain = {{ domain_name }}"
         backup: yes
 
-    - name: Create NFS mount points
-      ansible.builtin.file:
-        path: "{{ item.dest }}"
-        state: directory
-        mode: '0755'
-      loop: "{{ nfs_mounts }}"
-
-    - name: Add NFS mounts to fstab
-      ansible.builtin.mount:
-        path: "{{ item.dest }}"
-        src: "{{ nfs_server }}:{{ item.src }}"
-        fstype: nfs
-        opts: defaults
+    # Autofs configuration for per-user NFS mounts
+    - name: Configure autofs master map
+      ansible.builtin.lineinfile:
+        path: /etc/auto.master
+        line: "/mnt /etc/auto.nfs --timeout=60"
         state: present
         backup: yes
-      loop: "{{ nfs_mounts }}"
+      notify: restart autofs
+
+    - name: Create autofs NFS map file for public mounts
+      ansible.builtin.copy:
+        content: |
+          # Public mounts (all users)
+          {% for mount in nfs_mounts_public %}
+          {{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
+          {% endfor %}
+        dest: /etc/auto.nfs
+        mode: '0644'
+        backup: yes
+      notify: restart autofs
+
+    - name: Start and enable autofs service
+      ansible.builtin.systemd:
+        name: autofs
+        state: started
+        enabled: yes
+
+    - name: Create PAM script directory
+      ansible.builtin.file:
+        path: /usr/share/libpam-script
+        state: directory
+        mode: '0755'
+
+    - name: Create script to add NFS bookmarks to GNOME Files
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # This script adds NFS mounts as bookmarks in GNOME Files
+          
+          USER_HOME=$(eval echo ~$PAM_USER)
+          BOOKMARKS_FILE="$USER_HOME/.config/gtk-3.0/bookmarks"
+          
+          # Create gtk-3.0 config directory if it doesn't exist
+          mkdir -p "$USER_HOME/.config/gtk-3.0"
+          
+          # Add public mounts bookmarks for all users
+          {% for mount in nfs_mounts_public %}
+          BOOKMARK="file://{{ autofs_base_path }}/{{ mount.dest }} {{ mount.dest }}"
+          if ! grep -Fxq "$BOOKMARK" "$BOOKMARKS_FILE" 2>/dev/null; then
+              echo "$BOOKMARK" >> "$BOOKMARKS_FILE"
+          fi
+          {% endfor %}
+          
+          # Add NOX Admins bookmarks if user is member of the group
+          if id -nG "$PAM_USER" | grep -qw "NOX Admins"; then
+              {% for mount in nfs_mounts_noxadmins %}
+              BOOKMARK="file://{{ autofs_base_path }}/{{ mount.dest }} {{ mount.dest }}"
+              if ! grep -Fxq "$BOOKMARK" "$BOOKMARKS_FILE" 2>/dev/null; then
+                  echo "$BOOKMARK" >> "$BOOKMARKS_FILE"
+              fi
+              {% endfor %}
+          fi
+          
+          # Set correct ownership
+          chown $PAM_USER:$(id -gn $PAM_USER) "$BOOKMARKS_FILE"
+          chmod 644 "$BOOKMARKS_FILE"
+          
+          exit 0
+        dest: /usr/share/libpam-script/pam_script_bookmarks.sh
+        mode: '0755'
+        backup: yes
+
+    - name: Create PAM session script for NOX Admins mounts and bookmarks
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # This script runs when a user logs in
+          
+          # Check if user is member of "NOX Admins" group
+          if id -nG "$PAM_USER" | grep -qw "NOX Admins"; then
+              # Create NOX Admins autofs map if it doesn't exist
+              if [ ! -f /etc/auto.nfs.noxadmins ]; then
+                  cat > /etc/auto.nfs.noxadmins << 'EOF'
+          {% for mount in nfs_mounts_noxadmins %}
+          {{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
+          {% endfor %}
+          EOF
+              fi
+              
+              # Add NOX Admins mounts to auto.nfs if not present
+              {% for mount in nfs_mounts_noxadmins %}
+              if ! grep -q "^{{ mount.dest }}" /etc/auto.nfs; then
+                  echo "{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}" >> /etc/auto.nfs
+              fi
+              {% endfor %}
+              
+              # Reload autofs
+              systemctl reload autofs
+          fi
+          
+          # Add bookmarks to GNOME Files
+          /usr/share/libpam-script/pam_script_bookmarks.sh
+          
+          exit 0
+        dest: /usr/share/libpam-script/pam_script_ses_open
+        mode: '0755'
+        backup: yes
+
+    - name: Configure PAM to use the script
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/system-auth
+        line: "session optional pam_exec.so /usr/share/libpam-script/pam_script_ses_open"
+        insertafter: "^session.*pam_systemd"
+        state: present
+        backup: yes
 
     - name: Test NFS connectivity before mounting
       ansible.builtin.command: "showmount -e {{ nfs_server }}"
@@ -171,22 +275,6 @@
       ansible.builtin.debug:
         msg: "Available NFS exports: {{ nfs_exports.stdout_lines }}"
       when: nfs_exports.rc == 0
-
-    - name: Mount NFS shares
-      ansible.builtin.mount:
-        path: "{{ item.dest }}"
-        src: "{{ nfs_server }}:{{ item.src }}"
-        fstype: nfs
-        state: mounted
-      loop: "{{ nfs_mounts }}"
-      register: nfs_mount_result
-      failed_when: false
-
-    - name: Display NFS mount results
-      ansible.builtin.debug:
-        msg: "Mount {{ item.item.dest }}: {{ 'SUCCESS' if item.changed else 'ALREADY MOUNTED' }}"
-      loop: "{{ nfs_mount_result.results }}"
-      when: nfs_mount_result is defined and nfs_mount_result.results is defined
 
     - name: Verify domain join status
       ansible.builtin.command: realm list
@@ -215,3 +303,8 @@
         name: sssd
         state: restarted
         daemon_reload: yes
+
+    - name: restart autofs
+      ansible.builtin.systemd:
+        name: autofs
+        state: restarted
