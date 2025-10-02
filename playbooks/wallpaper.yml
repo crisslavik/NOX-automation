@@ -185,41 +185,46 @@
         mode: '0755'
 
 # ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
-    - name: Apply wallpaper to currently logged-in users
-      ansible.builtin.shell: |
-        for user in $(ps aux | grep -v grep | grep gnome-session | awk '{print $1}' | sort | uniq); do
-          if [ -n "$user" ] && [ "$user" != "gdm" ]; then
-            user_id=$(id -u "$user" 2>/dev/null)
-            if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
-              
-              # Detect user's DISPLAY (handles :0, :1, :2 for DCV sessions)
-              user_display=$(ps e -u "$user" | grep -oP 'DISPLAY=\K[^ ]+' | head -n1)
-              if [ -z "$user_display" ]; then
-                user_display=":0"
+    - name: Create script to apply wallpaper to logged-in users
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          for user in $(ps aux | grep -v grep | grep gnome-session | awk '{print $1}' | sort | uniq); do
+            if [ -n "$user" ] && [ "$user" != "gdm" ]; then
+              user_id=$(id -u "$user" 2>/dev/null)
+              if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
+                
+                # Detect user's DISPLAY (handles :0, :1, :2 for DCV sessions)
+                user_display=$(ps e -u "$user" | grep -oP 'DISPLAY=\K[^ ]+' | head -n1)
+                if [ -z "$user_display" ]; then
+                  user_display=":0"
+                fi
+                
+                # Set XAUTHORITY
+                user_xauth=$(eval echo ~$user)/.Xauthority
+                
+                # Apply wallpaper with proper environment
+                sudo -u "$user" \
+                  DISPLAY="$user_display" \
+                  XAUTHORITY="$user_xauth" \
+                  DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
+                  gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_path }}" 2>/dev/null || true
+                
+                sudo -u "$user" \
+                  DISPLAY="$user_display" \
+                  XAUTHORITY="$user_xauth" \
+                  DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
+                  gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_path }}" 2>/dev/null || true
+                
+                echo "Applied wallpaper for $user on DISPLAY $user_display"
               fi
-              
-              # Set XAUTHORITY
-              user_xauth=$(eval echo ~$user)/.Xauthority
-              
-              # Apply wallpaper with proper environment
-              sudo -u "$user" \
-                DISPLAY="$user_display" \
-                XAUTHORITY="$user_xauth" \
-                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.background picture-uri "file://{{ '{{' }} wallpaper_path {{ '}}' }}" 2>/dev/null || true
-              
-              sudo -u "$user" \
-                DISPLAY="$user_display" \
-                XAUTHORITY="$user_xauth" \
-                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ '{{' }} wallpaper_path {{ '}}' }}" 2>/dev/null || true
-              
-              echo "Applied wallpaper for $user on DISPLAY $user_display"
             fi
-          fi
-        done
-      args:
-        executable: /bin/bash
+          done
+        dest: /tmp/apply-nox-wallpaper-now.sh
+        mode: '0755'
+
+    - name: Execute wallpaper application script
+      ansible.builtin.command: /tmp/apply-nox-wallpaper-now.sh
       ignore_errors: yes
 
     # ====== SELINUX AND PERMISSIONS ======
