@@ -1,0 +1,54 @@
+---
+# Diagnose Black Screen Issue
+- name: Diagnose NVIDIA Black Screen
+  hosts: nox-cmp-04  # Change to whichever machine has black screen
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Check if NVIDIA driver is loaded
+      ansible.builtin.shell: nvidia-smi 2>&1
+      register: nvidia_smi_check
+      failed_when: false
+      changed_when: false
+
+    - name: Check loaded kernel modules
+      ansible.builtin.shell: lsmod | grep -E "nvidia|nouveau"
+      register: modules_check
+      changed_when: false
+
+    - name: Check systemd default target
+      ansible.builtin.command: systemctl get-default
+      register: target_check
+      changed_when: false
+
+    - name: Check GDM service status
+      ansible.builtin.systemd:
+        name: gdm
+      register: gdm_status
+
+    - name: Get X.Org error logs
+      ansible.builtin.shell: cat /var/log/Xorg.0.log | grep -i "EE\|WW" | tail -20
+      register: xorg_errors
+      failed_when: false
+      changed_when: false
+
+    - name: Display diagnostic results
+      ansible.builtin.debug:
+        msg: |
+          === NVIDIA Black Screen Diagnostics ===
+          
+          NVIDIA Driver Status:
+          {{ nvidia_smi_check.stdout }}
+          
+          Loaded Modules:
+          {{ modules_check.stdout }}
+          
+          System Target:
+          {{ target_check.stdout }}
+          
+          GDM Status:
+          {{ gdm_status.status.ActiveState }}
+          
+          X.Org Errors:
+          {{ xorg_errors.stdout }}
