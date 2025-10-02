@@ -12,13 +12,6 @@
       when: ansible_os_family == "RedHat"
       register: dnf_result
 
-    - name: Perform a full system update on Debian-based systems (like Ubuntu)
-      ansible.builtin.apt:
-        name: "*"
-        state: latest
-        update_cache: yes
-      when: ansible_os_family == "Debian"
-      register: apt_result
 
     - name: Reboot if necessary
       ansible.builtin.reboot:
