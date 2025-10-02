@@ -1,8 +1,6 @@
 #!/bin/bash
-
 # A simple script to copy the public SSH key to multiple machines.
 # This assumes you have the same root password for all machines.
-
 # --- IMPORTANT ---
 # 1. This script now uses your Ansible inventory file to get the list of hosts.
 #    It will now use hostnames directly, assuming they are resolvable via DNS.
@@ -36,7 +34,17 @@ fi
 echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
 
 # Parse hosts from Ansible inventory
-HOSTS_FOUND=$(grep -vE '^\s*$|^\s*#|^\s*\[' "$ANSIBLE_INVENTORY_FILE" | awk '{print $1}')
+# Extract hostnames and ansible_host values
+HOSTS_FOUND=$(grep -vE '^\s*$|^\s*#|^\s*\[' "$ANSIBLE_INVENTORY_FILE" | \
+while read line; do
+    # Check if line has ansible_host= parameter
+    if echo "$line" | grep -q "ansible_host="; then
+        echo "$line" | sed -n 's/.*ansible_host=\([^ ]*\).*/\1/p'
+    else
+        # Otherwise use the first field (hostname)
+        echo "$line" | awk '{print $1}'
+    fi
+done)
 
 if [ -z "$HOSTS_FOUND" ]; then
     echo "Warning: No hosts were found in the inventory file."
@@ -46,24 +54,9 @@ fi
 echo "Found hosts:"
 echo "$HOSTS_FOUND"
 echo ""
-    
-    # If line contains ansible_host=, extract that value
-    /ansible_host=/ {
-        match($0, /ansible_host=([^ \t]+)/, arr)
-        print arr[1]
-        next
-    }
-    
-    # Otherwise, print the first field (the hostname)
-    {
-        print $1
-    }
-' "$ANSIBLE_INVENTORY_FILE")
 
-if [ -z "$HOSTS_FOUND" ]; then
-    echo "Warning: No hosts were found in the inventory file. Please check the file format."
-    exit 0
-fi
+# Loop through each host found in the Ansible inventory file.
+for HOST in $HOSTS_FOUND; do
     echo "--- Attempting to copy key to $HOST ---"
     
     # Use sshpass to provide the password non-interactively
