@@ -34,18 +34,18 @@ if [ ! -f "$ANSIBLE_INVENTORY_FILE" ]; then
 fi
 
 echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
-echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
 
-# Parse Ansible inventory and extract actual hostnames/IPs
-# This handles:
-# - Lines with "ansible_host=" variable (extracts the IP/hostname)
-# - Plain hostname entries
-# - Ignores comments, blank lines, and group headers
-HOSTS_FOUND=$(awk '
-    # Skip empty lines, comments, and group headers
-    /^\s*$/ { next }
-    /^\s*#/ { next }
-    /^\s*\[.*\]/ { next }
+# Parse hosts from Ansible inventory
+HOSTS_FOUND=$(grep -vE '^\s*$|^\s*#|^\s*\[' "$ANSIBLE_INVENTORY_FILE" | awk '{print $1}')
+
+if [ -z "$HOSTS_FOUND" ]; then
+    echo "Warning: No hosts were found in the inventory file."
+    exit 0
+fi
+
+echo "Found hosts:"
+echo "$HOSTS_FOUND"
+echo ""
     
     # If line contains ansible_host=, extract that value
     /ansible_host=/ {
