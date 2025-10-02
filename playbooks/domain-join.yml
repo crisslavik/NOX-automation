@@ -139,8 +139,8 @@
         validate: 'visudo -cf %s'
         backup: yes
       loop:
-        - "%Domain\\ Admins ALL=(ALL:ALL) ALL"
-        - "%NOX\\ Admins ALL=(ALL:ALL) ALL"
+        - "%domain\\ admins ALL=(ALL:ALL) ALL"
+        - "%nox-admins ALL=(ALL:ALL) ALL"
 
     - name: Configure idmapd.conf for NFS
       ansible.builtin.lineinfile:
@@ -318,8 +318,10 @@
               {% endfor %}
           fi
           
-          # Set correct ownership
-          chown $PAM_USER:$(id -gn $PAM_USER) "$BOOKMARKS_FILE"
+          # Set correct ownership - use UID instead of group name to avoid space issues
+          USER_UID=$(id -u "$PAM_USER")
+          USER_GID=$(id -g "$PAM_USER")
+          chown "$USER_UID:$USER_GID" "$BOOKMARKS_FILE"
           chmod 644 "$BOOKMARKS_FILE"
           
           exit 0
