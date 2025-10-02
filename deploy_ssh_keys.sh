@@ -34,15 +34,20 @@ fi
 echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
 
 # Parse hosts from Ansible inventory
-# Extract hostnames and ansible_host values
+# Extract hostnames and ansible_host values, filter out variable lines
 HOSTS_FOUND=$(grep -vE '^\s*$|^\s*#|^\s*\[' "$ANSIBLE_INVENTORY_FILE" | \
 while read line; do
+    # Skip lines that are only variable definitions (start with ansible_ or other vars)
+    if echo "$line" | grep -qE '^\s*(ansible_|become)'; then
+        continue
+    fi
+    
     # Check if line has ansible_host= parameter
     if echo "$line" | grep -q "ansible_host="; then
         echo "$line" | sed -n 's/.*ansible_host=\([^ ]*\).*/\1/p'
     else
-        # Otherwise use the first field (hostname)
-        echo "$line" | awk '{print $1}'
+        # Otherwise use the first field (hostname), but only if it doesn't contain '='
+        echo "$line" | awk '{print $1}' | grep -v '='
     fi
 done)
 
