@@ -1,0 +1,70 @@
+---
+# Fix NVIDIA Login Loop - Machine 07
+- name: Fix GDM Login Loop on NVIDIA Systems
+  hosts: nox-cmp-07
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Check current GDM Wayland setting
+      ansible.builtin.shell: grep -i wayland /etc/gdm/custom.conf || echo "not found"
+      register: wayland_check
+      changed_when: false
+      
+    - name: Display current Wayland status
+      ansible.builtin.debug:
+        msg: "Current GDM config: {{ wayland_check.stdout }}"
+
+    - name: Ensure GDM custom.conf exists
+      ansible.builtin.file:
+        path: /etc/gdm/custom.conf
+        state: touch
+        mode: '0644'
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Ensure [daemon] section exists in GDM config
+      ansible.builtin.lineinfile:
+        path: /etc/gdm/custom.conf
+        line: '[daemon]'
+        insertbefore: BOF
+        state: present
+
+    - name: Disable Wayland in GDM (force X11)
+      ansible.builtin.lineinfile:
+        path: /etc/gdm/custom.conf
+        regexp: '^#?WaylandEnable='
+        line: 'WaylandEnable=false'
+        insertafter: '^\[daemon\]'
+        state: present
+
+    - name: Install missing GNOME session packages (if needed)
+      ansible.builtin.dnf:
+        name:
+          - gnome-session
+          - gnome-session-wayland-session
+          - gnome-session-xsession
+          - gnome-shell
+        state: present
+
+    - name: Restart GDM to apply changes
+      ansible.builtin.systemd:
+        name: gdm
+        state: restarted
+
+    - name: Wait for GDM to stabilize
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: Display fix status
+      ansible.builtin.debug:
+        msg: |
+          ✅ Login loop fix applied to {{ inventory_hostname }}
+          
+          Changes made:
+          • Wayland disabled in GDM
+          • X11 forced as display server
+          • GNOME session packages verified
+          • GDM restarted
+          
+          🔍 Try logging in now on machine 07
