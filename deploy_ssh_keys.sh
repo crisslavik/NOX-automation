@@ -20,7 +20,16 @@ NC='\033[0m' # No Color
 # User and password variables
 USER="root"
 PASSWORD_FILE="password.txt"
-ANSIBLE_INVENTORY_FILE="hosts.ini"
+# Allow override via command line argument, otherwise use default locations
+if [ -n "$1" ]; then
+    ANSIBLE_INVENTORY_FILE="$1"
+elif [ -f "./hosts.ini" ]; then
+    ANSIBLE_INVENTORY_FILE="./hosts.ini"
+elif [ -f "/etc/ansible/hosts" ]; then
+    ANSIBLE_INVENTORY_FILE="/etc/ansible/hosts"
+else
+    ANSIBLE_INVENTORY_FILE="hosts.ini"  # Will fail the check below if not found
+fi
 
 # Check if the necessary files exist
 if [ ! -f "$PASSWORD_FILE" ]; then
