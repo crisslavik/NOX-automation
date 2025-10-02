@@ -34,22 +34,36 @@ fi
 echo "Searching for hosts in $ANSIBLE_INVENTORY_FILE..."
 
 # Parse hosts from Ansible inventory
-# Extract hostnames and ansible_host values, filter out variable lines
-HOSTS_FOUND=$(grep -vE '^\s*$|^\s*#|^\s*\[' "$ANSIBLE_INVENTORY_FILE" | \
-while read line; do
-    # Skip lines that are only variable definitions (start with ansible_ or other vars)
-    if echo "$line" | grep -qE '^\s*(ansible_|become)'; then
-        continue
-    fi
+# Skip empty lines, comments, group headers, and variable sections
+HOSTS_FOUND=$(awk '
+    # Skip empty lines and comments
+    /^\s*$/ { next }
+    /^\s*#/ { next }
     
-    # Check if line has ansible_host= parameter
-    if echo "$line" | grep -q "ansible_host="; then
-        echo "$line" | sed -n 's/.*ansible_host=\([^ ]*\).*/\1/p'
-    else
-        # Otherwise use the first field (hostname), but only if it doesn't contain '='
-        echo "$line" | awk '{print $1}' | grep -v '='
-    fi
-done)
+    # Skip group headers
+    /^\s*\[.*\]/ { 
+        # Check if this is a :vars section
+        if ($0 ~ /:vars\]/) {
+            in_vars_section = 1
+        } else {
+            in_vars_section = 0
+        }
+        next 
+    }
+    
+    # Skip lines in vars sections
+    in_vars_section { next }
+    
+    # Extract hostname or ansible_host value
+    {
+        if ($0 ~ /ansible_host=/) {
+            match($0, /ansible_host=([^ \t]+)/, arr)
+            print arr[1]
+        } else {
+            print $1
+        }
+    }
+' "$ANSIBLE_INVENTORY_FILE")
 
 if [ -z "$HOSTS_FOUND" ]; then
     echo "Warning: No hosts were found in the inventory file."
