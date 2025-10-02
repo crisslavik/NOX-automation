@@ -184,7 +184,7 @@
         dest: /etc/profile.d/Z99-nox-wallpaper.sh
         mode: '0755'
 
-    # ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
+# ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
     - name: Apply wallpaper to currently logged-in users
       ansible.builtin.shell: |
         for user in $(ps aux | grep -v grep | grep gnome-session | awk '{print $1}' | sort | uniq); do
@@ -206,18 +206,20 @@
                 DISPLAY="$user_display" \
                 XAUTHORITY="$user_xauth" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_path }}" 2>/dev/null || true
+                gsettings set org.gnome.desktop.background picture-uri "file://{{ '{{' }} wallpaper_path {{ '}}' }}" 2>/dev/null || true
               
               sudo -u "$user" \
                 DISPLAY="$user_display" \
                 XAUTHORITY="$user_xauth" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_path }}" 2>/dev/null || true
+                gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ '{{' }} wallpaper_path {{ '}}' }}" 2>/dev/null || true
               
               echo "Applied wallpaper for $user on DISPLAY $user_display"
             fi
           fi
         done
+      args:
+        executable: /bin/bash
       ignore_errors: yes
 
     # ====== SELINUX AND PERMISSIONS ======
