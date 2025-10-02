@@ -1,7 +1,7 @@
 ---
 # Diagnose Black Screen Issue
 - name: Diagnose NVIDIA Black Screen
-  hosts: nox-cmp-04  # Change to whichever machine has black screen
+  hosts: all
   become: yes
   gather_facts: yes
   
