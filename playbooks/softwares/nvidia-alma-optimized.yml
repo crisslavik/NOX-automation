@@ -60,11 +60,16 @@
       ansible.builtin.dnf:
         update_cache: yes
 
+    # Add this BEFORE "Install kernel development packages"
+    - name: Enable EPEL repository (required for dkms)
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+
     - name: Install minimal kernel dependencies
       ansible.builtin.dnf:
         name:
           - kernel-devel
-          - epel-release
           - kernel-headers
           - gcc
           - make
