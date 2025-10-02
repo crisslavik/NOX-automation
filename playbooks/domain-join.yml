@@ -203,7 +203,7 @@
           {% endfor %}
           
           # Add NOX Admins bookmarks if user is member of the group
-          if id -nG "$PAM_USER" | grep -qw "NOX Admins"; then
+          if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
               {% for mount in nfs_mounts_noxadmins %}
               BOOKMARK="file://{{ autofs_base_path }}/{{ mount.dest }} {{ mount.dest }}"
               if ! grep -Fxq "$BOOKMARK" "$BOOKMARKS_FILE" 2>/dev/null; then
@@ -227,8 +227,8 @@
           #!/bin/bash
           # This script runs when a user logs in
           
-          # Check if user is member of "NOX Admins" group
-          if id -nG "$PAM_USER" | grep -qw "NOX Admins"; then
+          # Check if user is member of "nox-admins" group (as seen by Linux)
+          if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
               # Create NOX Admins autofs map if it doesn't exist
               if [ ! -f /etc/auto.nfs.noxadmins ]; then
                   cat > /etc/auto.nfs.noxadmins << 'EOF'
