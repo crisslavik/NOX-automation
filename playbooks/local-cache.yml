@@ -104,7 +104,7 @@
       ansible.builtin.file:
         path: "{{ cache_mount_point }}"
         state: directory
-        mode: '0755'
+        mode: '0777'
       when: cache_disk_path is defined
 
     - name: Get UUID of cache disk
