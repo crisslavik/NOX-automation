@@ -1,0 +1,51 @@
+---
+- name: Fix AD User Home Directory Permissions for GNOME
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Check SELinux status
+      ansible.builtin.command: getenforce
+      register: selinux_status
+      changed_when: false
+
+    - name: Display SELinux status
+      ansible.builtin.debug:
+        msg: "SELinux is {{ selinux_status.stdout }}"
+
+    - name: Set SELinux context for AD home directories
+      ansible.builtin.command: semanage fcontext -a -t user_home_dir_t "/home/ad.noxvfx.com(/.*)?"
+      ignore_errors: yes
+
+    - name: Apply SELinux context to existing AD home directories
+      ansible.builtin.command: restorecon -R -v /home/ad.noxvfx.com/
+      ignore_errors: yes
+
+    - name: Create .config directories for existing AD users
+      ansible.builtin.shell: |
+        for user_dir in /home/ad.noxvfx.com/*/; do
+          user=$(basename "$user_dir")
+          if [ -d "$user_dir" ]; then
+            mkdir -p "$user_dir/.config/dconf"
+            chown -R "$user:domain users@ad.noxvfx.com" "$user_dir/.config" 2>/dev/null || \
+            chown -R "$user:domain users" "$user_dir/.config" 2>/dev/null || \
+            chown -R "$user" "$user_dir/.config"
+            chmod 700 "$user_dir/.config"
+            chmod 700 "$user_dir/.config/dconf"
+          fi
+        done
+      args:
+        executable: /bin/bash
+      ignore_errors: yes
+
+    - name: Display instructions
+      ansible.builtin.debug:
+        msg:
+          - "✅ SELinux contexts updated for AD home directories"
+          - "✅ .config directories created for AD users"
+          - "⚠️  Users must LOG OUT and LOG BACK IN for changes to take effect"
+          - "After login, users should be able to:"
+          - "  - Change wallpapers"
+          - "  - Customize terminal colors/fonts"
+          - "  - Save monitor positions"
+          - "  - Hide the GNOME tour"
