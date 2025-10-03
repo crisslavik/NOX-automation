@@ -10,19 +10,25 @@
 
   tasks:
     # ===== STEP 1: Get Latest Blender Download URL =====
-    - name: Get latest Blender download page
+    - name: Get Blender download page content
       uri:
         url: "https://www.blender.org/download/"
         return_content: yes
       register: blender_page
 
-    - name: Extract latest Linux download URL
+    - name: Extract latest Blender version number
       set_fact:
-        blender_download_url: "{{ blender_page.content | regex_search('https://download.blender.org/release/Blender[0-9.]+/blender-[0-9.]+-linux-x64.tar.xz') }}"
+        blender_latest_version: "{{ blender_page.content | regex_search('blender-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64\\.tar\\.xz', '\\1') | first }}"
 
-    - name: Display download URL
+    - name: Construct download URL
+      set_fact:
+        blender_download_url: "https://download.blender.org/release/Blender{{ blender_latest_version.split('.')[0] }}.{{ blender_latest_version.split('.')[1] }}/blender-{{ blender_latest_version }}-linux-x64.tar.xz"
+
+    - name: Display download information
       debug:
-        msg: "Downloading Blender from: {{ blender_download_url }}"
+        msg: 
+          - "Latest Blender version: {{ blender_latest_version }}"
+          - "Download URL: {{ blender_download_url }}"
 
     - name: Download Blender tarball
       get_url:
@@ -30,7 +36,7 @@
         dest: "{{ blender_tarball_dest }}"
         mode: '0644'
         timeout: 300
-
+        
     - name: Extract version from tarball filename
       shell: "tar -tzf {{ blender_tarball_dest }} | head -1 | cut -d'/' -f1 | sed 's/blender-//; s/-linux-x64//'"
       register: detected_version
