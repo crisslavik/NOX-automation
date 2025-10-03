@@ -22,6 +22,26 @@
           • Set as default: {{ 'Yes' if set_as_default else 'No' }}
           • Desktop integration: {{ 'Yes' if create_desktop_entry else 'No' }}
 
+    # ====== CLEANUP OLD CONFIGURATION ======
+    - name: Remove old Flameshot desktop entries
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/share/applications/flameshot.desktop
+        - /usr/local/share/applications/flameshot.desktop
+        - /etc/xdg/autostart/flameshot.desktop
+
+    - name: Clean old configuration from existing users
+      ansible.builtin.shell: |
+        for home_dir in /home/*; do
+          if [ -d "$home_dir" ]; then
+            rm -rf "$home_dir/.config/flameshot"
+            rm -f "$home_dir/.local/share/applications/flameshot*.desktop"
+          fi
+        done
+      ignore_errors: yes
+
     # ====== INSTALLATION ======
     - name: Ensure Flatpak is installed
       ansible.builtin.dnf:
@@ -55,21 +75,13 @@
       ansible.builtin.copy:
         content: |
           #!/bin/bash
-          # Create date-based screenshot directory
-          SCREENSHOT_DIR="$HOME/Pictures/Screenshots/$(date +%Y-%m-%d)"
-          mkdir -p "$SCREENSHOT_DIR"
-          
-          # Run flameshot with the date-based directory
-          flatpak run org.flameshot.Flameshot "$@" --path "$SCREENSHOT_DIR"
+          export FLAMESHOT_CAPTURE_PATH="$HOME/Pictures/Screenshots/$(date +%Y-%m-%d)"
+          mkdir -p "$FLAMESHOT_CAPTURE_PATH"
+          flatpak run org.flameshot.Flameshot "$@"
         dest: /usr/local/bin/flameshot
         mode: '0755'
 
     # ====== DESKTOP INTEGRATION ======
-    - name: Remove duplicate desktop entry if exists
-      ansible.builtin.file:
-        path: /usr/share/applications/flameshot.desktop
-        state: absent
-
     - name: Hide Flatpak's default desktop entry
       ansible.builtin.copy:
         content: |
@@ -96,11 +108,10 @@
           showStartupLaunchMessage=false
           saveAfterCopy=true
           copyAndCloseAfterUpload=true
-          copyPathAfterSave=false
-          useJpgForClipboard=true
-          savePath=$HOME/Pictures/Screenshots
-          savePathFixed=false
-          saveAsFileExtension=.jpg
+          savePathFixed=true
+          filenamePattern=%Y-%m-%d_%H-%M-%S
+          saveAsFileExtension=jpg
+          uiColor=#8b38b8
           
           [Shortcuts]
           TYPE_ARROW=A
@@ -136,8 +147,8 @@
             mkdir -p "$home_dir/.config/flameshot"
             cp /etc/skel/.config/flameshot/flameshot.ini "$home_dir/.config/flameshot/flameshot.ini"
             
-            # Create Screenshots directory
-            mkdir -p "$home_dir/Pictures/Screenshots"
+            # Create Screenshots directory with date subfolder
+            mkdir -p "$home_dir/Pictures/Screenshots/$(date +%Y-%m-%d)"
             
             # Fix ownership
             chown -R "$user:$user" "$home_dir/.config/flameshot" "$home_dir/Pictures/Screenshots" 2>/dev/null || true
@@ -265,7 +276,7 @@
           
           echo "🖥️ Desktop Integration:"
           if [ -f "/usr/local/share/applications/org.flameshot.Flameshot.desktop" ]; then
-              echo "✅ Duplicate desktop entry hidden"
+              echo "✅ Desktop entry configured (hidden from menu)"
           fi
           echo
           
@@ -276,7 +287,7 @@
                   echo "✅ GNOME Print Screen shortcut configured"
                   echo "   Print Screen: flameshot gui"
               else
-                  echo "⚠️ GNOME shortcuts not configured yet (may need login)"
+                  echo "⚠️ GNOME shortcuts not configured yet (logout/login required)"
               fi
           else
               echo "ℹ️ Not in GNOME session - cannot check shortcuts"
@@ -321,6 +332,8 @@
           • Auto-saves as JPG
           • Auto-copies to clipboard
           • Advanced annotation tools
+          
+          ⚠️ IMPORTANT: Logout and login again to apply all settings!
           
           ⌨️ Keyboard Shortcut:
           • Print Screen: Open Flameshot GUI
