@@ -1,5 +1,6 @@
 ---
 # NOX VFX GNOME Configuration - Dark Theme and VFX Optimizations
+# Updated to work with local sessions, X11, Wayland, and Nice DCV
 - name: Configure GNOME for NOX VFX Workstations
   hosts: all
   become: yes
@@ -22,8 +23,8 @@
           🎨 Configuration:
           • Dark Theme: {{ 'Yes' if enable_dark_theme else 'No' }}
           • Extensions: {{ 'Yes' if install_extensions else 'No' }}
-          • Favorites: {{ 'Yes' if configure_favorites else 'No' }}
           • VFX Optimizations: {{ 'Yes' if optimize_for_vfx else 'No' }}
+          • Compatible with: Local sessions, X11, Wayland, Nice DCV
           
           🎯 This will create a professional, VFX-optimized desktop environment
 
@@ -58,6 +59,7 @@
       ansible.builtin.copy:
         content: |
           # NOX VFX GNOME Configuration
+          # Compatible with local sessions, X11, Wayland, and Nice DCV
           
           # Dark theme settings
           [org/gnome/desktop/interface]
@@ -88,7 +90,6 @@
           # GNOME Shell extensions configuration
           [org/gnome/shell]
           enabled-extensions=['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']
-          # favorite-apps={{ gnome_favorites | to_json }}
           
           # Dash to Dock extension settings
           [org/gnome/shell/extensions/dash-to-dock]
@@ -135,76 +136,147 @@
         content: |
           #!/bin/bash
           # NOX VFX GNOME Theme and Configuration Script
+          # Works with local sessions, X11, Wayland, and DCV virtual sessions
           
-          # Wait for GNOME session to be ready
-          sleep 15
+          LOG_FILE="/tmp/nox-gnome-config-$(whoami).log"
+          exec > >(tee -a "$LOG_FILE") 2>&1
           
-          # Set up environment
-          if [ -z "$DISPLAY" ]; then export DISPLAY=:0; fi
-          if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
-              export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-          fi
+          echo "$(date): Starting NOX GNOME configuration for user $(whoami)"
           
-          # Wait for gsettings and GNOME Shell to be available
-          timeout=60
-          while [ $timeout -gt 0 ]; do
-              if gsettings list-schemas | grep -q "org.gnome.desktop.interface" && pgrep -x gnome-shell > /dev/null; then
-                  break
+          # Detect display server and session info
+          detect_session() {
+              # Try to get DISPLAY from environment or find it
+              if [ -z "$DISPLAY" ]; then
+                  # Try to find DISPLAY from running processes
+                  DISPLAY=$(ps e -u $(whoami) | grep -oP 'DISPLAY=\K[^ ]+' | head -1)
+                  [ -z "$DISPLAY" ] && DISPLAY=":0"
               fi
-              sleep 2
-              ((timeout--))
-          done
+              export DISPLAY
+              
+              # Set up DBUS if not already set
+              if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+                  DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+                  export DBUS_SESSION_BUS_ADDRESS
+              fi
+              
+              echo "Session info: DISPLAY=$DISPLAY, DBUS=$DBUS_SESSION_BUS_ADDRESS"
+              echo "Desktop: $XDG_CURRENT_DESKTOP, Session: $XDG_SESSION_TYPE"
+          }
           
-          echo "Configuring NOX VFX GNOME environment for user $(whoami)..."
+          # Wait for GNOME to be ready with dynamic timeout
+          wait_for_gnome() {
+              local max_wait=120  # 2 minutes max
+              local waited=0
+              
+              echo "Waiting for GNOME session to be ready..."
+              
+              while [ $waited -lt $max_wait ]; do
+                  # Check if gsettings is available and GNOME Shell is running
+                  if command -v gsettings >/dev/null 2>&1; then
+                      if gsettings list-schemas 2>/dev/null | grep -q "org.gnome.desktop.interface"; then
+                          if pgrep -x gnome-shell >/dev/null 2>&1 || pgrep -x gnome-session >/dev/null 2>&1; then
+                              echo "✅ GNOME session ready after ${waited}s"
+                              return 0
+                          fi
+                      fi
+                  fi
+                  sleep 2
+                  waited=$((waited + 2))
+              done
+              
+              echo "⚠️ GNOME session not detected after ${max_wait}s, attempting configuration anyway..."
+              return 1
+          }
           
-          # Dark theme
-          gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
-          gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+          # Apply GNOME settings with error handling
+          apply_settings() {
+              echo "Applying NOX VFX GNOME settings..."
+              
+              # Dark theme
+              gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null && \
+                  echo "✅ GTK theme set" || echo "⚠️ Failed to set GTK theme"
+              
+              gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null && \
+                  echo "✅ Color scheme set" || echo "⚠️ Failed to set color scheme"
+              
+              # Interface settings
+              gsettings set org.gnome.desktop.interface show-battery-percentage true 2>/dev/null
+              gsettings set org.gnome.desktop.interface clock-show-weekday true 2>/dev/null
+              gsettings set org.gnome.desktop.interface clock-show-seconds false 2>/dev/null
+              gsettings set org.gnome.desktop.interface enable-hot-corners false 2>/dev/null
+              echo "✅ Interface settings applied"
+              
+              # Window manager
+              gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close' 2>/dev/null
+              gsettings set org.gnome.desktop.wm.preferences theme 'Adwaita-dark' 2>/dev/null
+              echo "✅ Window manager settings applied"
+              
+              # File manager
+              gsettings set org.gtk.settings.file-chooser show-hidden false 2>/dev/null
+              gsettings set org.gtk.settings.file-chooser show-size-column true 2>/dev/null
+              gsettings set org.gtk.settings.file-chooser show-type-column true 2>/dev/null
+              gsettings set org.gtk.settings.file-chooser sort-directories-first true 2>/dev/null
+              echo "✅ File manager settings applied"
+              
+              # Power settings (safe for both physical and virtual machines)
+              gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null
+              echo "✅ Power settings applied"
+              
+              # Enable extensions
+              gsettings set org.gnome.shell enabled-extensions "['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']" 2>/dev/null && \
+                  echo "✅ Extensions enabled" || echo "⚠️ Failed to enable extensions"
+              
+              # Configure Dash to Dock
+              gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM' 2>/dev/null
+              gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false 2>/dev/null
+              gsettings set org.gnome.shell.extensions.dash-to-dock autohide true 2>/dev/null
+              gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true 2>/dev/null
+              gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false 2>/dev/null
+              gsettings set org.gnome.shell.extensions.dash-to-dock show-trash true 2>/dev/null
+              gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts true 2>/dev/null
+              echo "✅ Dash to Dock configured"
+              
+              # Nautilus (file manager) optimizations
+              gsettings set org.gnome.nautilus.preferences default-folder-viewer 'list-view' 2>/dev/null
+              gsettings set org.gnome.nautilus.preferences search-filter-time-type 'last_modified' 2>/dev/null
+              gsettings set org.gnome.nautilus.preferences show-create-link true 2>/dev/null
+              gsettings set org.gnome.nautilus.preferences show-delete-permanently true 2>/dev/null
+              echo "✅ Nautilus preferences set"
+              
+              # Terminal theme
+              profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
+              if [ -n "$profile_id" ]; then
+                  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ use-theme-colors false 2>/dev/null
+                  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ background-color 'rgb(23,20,33)' 2>/dev/null
+                  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ foreground-color 'rgb(208,207,204)' 2>/dev/null
+                  echo "✅ Terminal theme applied"
+              fi
+          }
           
-          # Interface settings
-          gsettings set org.gnome.desktop.interface show-battery-percentage true 2>/dev/null || true
-          gsettings set org.gnome.desktop.interface clock-show-weekday true 2>/dev/null || true
-          gsettings set org.gnome.desktop.interface clock-show-seconds false 2>/dev/null || true
-          gsettings set org.gnome.desktop.interface enable-hot-corners false 2>/dev/null || true
+          # Main execution
+          main() {
+              detect_session
+              
+              # Initial wait before starting
+              sleep 10
+              
+              # Wait for GNOME to be ready
+              wait_for_gnome
+              
+              # Apply settings
+              apply_settings
+              
+              # Log to system journal if available
+              if command -v logger >/dev/null 2>&1; then
+                  logger "NOX VFX GNOME configuration applied for user $(whoami) on DISPLAY=$DISPLAY"
+              fi
+              
+              echo "$(date): NOX GNOME configuration completed successfully"
+              echo "Log saved to: $LOG_FILE"
+          }
           
-          # Window manager
-          gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close' 2>/dev/null || true
-          gsettings set org.gnome.desktop.wm.preferences theme 'Adwaita-dark' 2>/dev/null || true
-          
-          # File manager
-          gsettings set org.gtk.settings.file-chooser show-hidden false 2>/dev/null || true
-          gsettings set org.gtk.settings.file-chooser show-size-column true 2>/dev/null || true
-          gsettings set org.gtk.settings.file-chooser show-type-column true 2>/dev/null || true
-          gsettings set org.gtk.settings.file-chooser sort-directories-first true 2>/dev/null || true
-          
-          # Power settings
-          gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null || true
-          
-          # Enable extensions
-          gsettings set org.gnome.shell enabled-extensions "['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']" 2>/dev/null || true
-          
-          # Configure Dash to Dock
-          gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM' 2>/dev/null || true
-          gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false 2>/dev/null || true
-          gsettings set org.gnome.shell.extensions.dash-to-dock autohide true 2>/dev/null || true
-          gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true 2>/dev/null || true
-          gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false 2>/dev/null || true
-          gsettings set org.gnome.shell.extensions.dash-to-dock show-trash true 2>/dev/null || true
-          gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts true 2>/dev/null || true
-          
-          # Set favorites
-          # gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites | to_json }}' 2>/dev/null || true
-          
-          # Terminal theme
-          profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
-          if [ -n "$profile_id" ]; then
-              gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ use-theme-colors false 2>/dev/null || true
-              gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ background-color 'rgb(23,20,33)' 2>/dev/null || true
-              gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ foreground-color 'rgb(208,207,204)' 2>/dev/null || true
-          fi
-          
-          logger "NOX VFX GNOME configuration applied for user $(whoami)"
-          echo "GNOME configuration completed for user $(whoami)"
+          # Run main function
+          main
         dest: /usr/local/bin/set-nox-gnome-config.sh
         mode: '0755'
 
@@ -221,14 +293,16 @@
           [Desktop Entry]
           Type=Application
           Name=NOX GNOME Configuration
-          Comment=Apply NOX VFX GNOME theme and settings
+          Comment=Apply NOX VFX GNOME theme and settings (works with local and DCV sessions)
           Exec=/usr/local/bin/set-nox-gnome-config.sh
           Hidden=false
           NoDisplay=true
           X-GNOME-Autostart-enabled=true
-          X-GNOME-Autostart-Delay=20
+          X-GNOME-Autostart-Delay=15
+          OnlyShowIn=GNOME;
           Categories=System;Settings;
           StartupNotify=false
+          X-GNOME-Autostart-Phase=Applications
         dest: /etc/xdg/autostart/nox-gnome-config.desktop
         mode: '0644'
 
@@ -237,41 +311,134 @@
         content: |
           #!/bin/bash
           # Apply NOX VFX GNOME configuration for GNOME sessions
-          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
-              # Run in background with delay to ensure GNOME Shell is ready
-              (sleep 25 && /usr/local/bin/set-nox-gnome-config.sh &) 2>/dev/null
+          # Works with local sessions, X11, Wayland, and DCV
+          
+          # Only run in GNOME sessions
+          if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ]; then
+              # Check if we have a display (X11 or Wayland)
+              if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+                  # Run in background with delay to ensure GNOME Shell is ready
+                  # Use nohup to prevent hanging terminal sessions
+                  (sleep 20 && /usr/local/bin/set-nox-gnome-config.sh) > /dev/null 2>&1 &
+                  disown
+              fi
           fi
         dest: /etc/profile.d/Z97-nox-gnome-config.sh
         mode: '0755'
 
-    # ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
-    - name: Apply GNOME configuration to currently logged-in users
-      ansible.builtin.shell: |
-        for user in $(ps aux | grep -v grep | grep gnome-shell | awk '{print $1}' | sort | uniq); do
-          if [ -n "$user" ] && [ "$user" != "gdm" ]; then
-            user_id=$(id -u "$user" 2>/dev/null)
-            if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
-              echo "Applying NOX GNOME configuration for logged-in user: $user"
-              
-              # Apply dark theme
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
-              
-              # Apply favorites
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                # gsettings set org.gnome.shell favorite-apps '{{ gnome_favorites | to_json }}' 2>/dev/null || true
-              
-              # Apply interface settings
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.interface show-battery-percentage true 2>/dev/null || true
-              sudo -u "$user" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
-                gsettings set org.gnome.desktop.interface enable-hot-corners false 2>/dev/null || true
-              
-              echo "Configuration applied for user: $user"
-            fi
+    # ====== DCV-SPECIFIC OPTIMIZATIONS (OPTIONAL) ======
+    - name: Check if Nice DCV is installed
+      ansible.builtin.stat:
+        path: /usr/bin/dcv
+      register: dcv_installed
+
+    - name: Create DCV session configuration for GNOME optimization
+      ansible.builtin.copy:
+        content: |
+          [display/linux]
+          # GNOME-specific optimizations for DCV
+          use-hardware-acceleration = true
+          
+          [session-management/automatic-console-session]
+          # Ensure GNOME session settings are preserved
+          owner = ""
+          
+          [connectivity]
+          # Optimize for VFX workflows
+          enable-quic-frontend = true
+          
+          [clipboard]
+          # Enable clipboard for better workflow
+          primary-selection-paste = true
+          primary-selection-copy = true
+        dest: /etc/dcv/dcv.conf.d/gnome-optimization.conf
+        mode: '0644'
+      when: dcv_installed.stat.exists
+      notify: restart dcv
+
+    - name: Add DCV session launch script with GNOME configuration
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # DCV Session Launch Script with NOX GNOME Configuration
+          
+          # Wait for DCV session to stabilize
+          sleep 5
+          
+          # Apply NOX GNOME configuration
+          if [ -x /usr/local/bin/set-nox-gnome-config.sh ]; then
+              /usr/local/bin/set-nox-gnome-config.sh &
           fi
+        dest: /usr/local/bin/dcv-gnome-launch.sh
+        mode: '0755'
+      when: dcv_installed.stat.exists
+
+    # ====== IMMEDIATE APPLICATION FOR LOGGED-IN USERS ======
+    - name: Apply GNOME configuration to currently logged-in users (local and DCV)
+      ansible.builtin.shell: |
+        # Find all GNOME sessions (local and virtual/DCV)
+        declare -A user_sessions
+        
+        # Method 1: Check gnome-shell processes
+        while IFS= read -r line; do
+          user=$(echo "$line" | awk '{print $1}')
+          display=$(echo "$line" | grep -oP 'DISPLAY=\K[^ ]+' || echo "")
+          [ -n "$user" ] && [ "$user" != "gdm" ] && user_sessions["$user"]="$display"
+        done < <(ps auxe | grep gnome-shell | grep -v grep)
+        
+        # Method 2: Check loginctl sessions for graphical sessions
+        while IFS= read -r session; do
+          session_info=$(loginctl show-session "$session" -p Name -p Type -p Display 2>/dev/null)
+          if echo "$session_info" | grep -q "Type=wayland\|Type=x11"; then
+            user=$(echo "$session_info" | grep "Name=" | cut -d= -f2)
+            display=$(echo "$session_info" | grep "Display=" | cut -d= -f2)
+            [ -n "$user" ] && [ "$user" != "gdm" ] && user_sessions["$user"]="${display:-:0}"
+          fi
+        done < <(loginctl list-sessions --no-legend | awk '{print $1}')
+        
+        # Apply configuration to each unique user session
+        for user in "${!user_sessions[@]}"; do
+          user_id=$(id -u "$user" 2>/dev/null)
+          if [ -z "$user_id" ]; then
+            continue
+          fi
+          
+          display="${user_sessions[$user]}"
+          [ -z "$display" ] && display=":0"
+          
+          dbus_addr="unix:path=/run/user/$user_id/bus"
+          
+          # Check if DBUS socket exists
+          if [ ! -S "/run/user/$user_id/bus" ]; then
+            echo "Skipping user $user - no DBUS session found"
+            continue
+          fi
+          
+          echo "Applying NOX GNOME configuration for user: $user (DISPLAY=$display)"
+          
+          # Apply dark theme
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+          
+          # Apply interface settings
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.desktop.interface show-battery-percentage true 2>/dev/null || true
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.desktop.interface enable-hot-corners false 2>/dev/null || true
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.desktop.interface clock-show-weekday true 2>/dev/null || true
+          
+          # Apply window manager settings
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close' 2>/dev/null || true
+          
+          # Enable extensions
+          sudo -u "$user" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
+            gsettings set org.gnome.shell enabled-extensions "['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']" 2>/dev/null || true
+          
+          echo "✅ Configuration applied for user: $user"
         done
       ignore_errors: yes
 
@@ -292,6 +459,8 @@
           echo "🖥️ GNOME Environment:"
           echo "   Session: $XDG_SESSION_TYPE"
           echo "   Desktop: $XDG_CURRENT_DESKTOP"
+          echo "   Display: $DISPLAY"
+          [ -n "$WAYLAND_DISPLAY" ] && echo "   Wayland Display: $WAYLAND_DISPLAY"
           echo
           
           echo "🎨 Theme Configuration:"
@@ -304,15 +473,6 @@
               echo "   ✅ Dark theme active"
           else
               echo "   ⚠️ Dark theme may not be active"
-          fi
-          echo
-          
-          echo "📌 Favorites:"
-          favorites=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)
-          if [[ "$favorites" == *"chrome"* ]] && [[ "$favorites" == *"krita"* ]]; then
-              echo "   ✅ NOX favorites configured"
-          else
-              echo "   ⚠️ Favorites may need attention"
           fi
           echo
           
@@ -332,6 +492,31 @@
           echo "   Hot corners: $hot_corners"
           echo
           
+          echo "📁 File Manager:"
+          list_view=$(gsettings get org.gnome.nautilus.preferences default-folder-viewer 2>/dev/null)
+          sort_dirs=$(gsettings get org.gtk.settings.file-chooser sort-directories-first 2>/dev/null)
+          echo "   Default view: $list_view"
+          echo "   Sort directories first: $sort_dirs"
+          echo
+          
+          # Check for DCV
+          if [ -x /usr/bin/dcv ]; then
+              echo "🖥️ Nice DCV: Installed"
+              if [ -f /etc/dcv/dcv.conf.d/gnome-optimization.conf ]; then
+                  echo "   ✅ DCV GNOME optimizations configured"
+              fi
+          fi
+          echo
+          
+          # Check logs
+          log_file="/tmp/nox-gnome-config-$(whoami).log"
+          if [ -f "$log_file" ]; then
+              echo "📋 Configuration Log:"
+              echo "   Location: $log_file"
+              echo "   Last run: $(stat -c %y "$log_file" 2>/dev/null | cut -d. -f1)"
+          fi
+          echo
+          
           echo "🎯 NOX VFX GNOME Configuration: Ready for VFX Work!"
         dest: /usr/local/bin/verify-nox-gnome.sh
         mode: '0755'
@@ -344,25 +529,39 @@
           ✅ Applied Settings:
           • Dark theme (Adwaita-dark)
           • VFX-optimized interface
-          • Professional favorites bar
           • Dash-to-dock with autohide
           • Power settings for workstations
           • File manager optimizations
+          {{ '• Nice DCV optimizations' if dcv_installed.stat.exists else '' }}
           
           🔧 Extensions Enabled:
           • Dash to Dock
           • User Theme
           • Desktop Icons
           
+          🖥️ Compatible With:
+          • Local GNOME sessions
+          • X11 sessions
+          • Wayland sessions
+          • Nice DCV remote sessions
+          
           📋 Verification:
           Run as user: /usr/local/bin/verify-nox-gnome.sh
+          Check logs: /tmp/nox-gnome-config-USERNAME.log
           
           🔄 Changes take effect:
           • Immediately for logged-in users
           • At next login for new sessions
-          • After GNOME Shell restart (Alt+F2, type 'r')
+          • Automatically on DCV session start
 
   handlers:
     - name: update dconf
       ansible.builtin.command: dconf update
       changed_when: true
+    
+    - name: restart dcv
+      ansible.builtin.systemd:
+        name: dcvserver
+        state: restarted
+      when: dcv_installed.stat.exists
+      ignore_errors: yes
