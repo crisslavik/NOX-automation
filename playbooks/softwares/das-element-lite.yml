@@ -60,26 +60,20 @@
           #### path to the resources folder, for presets, hooks, etc.
           DASELEMENT_RESOURCES={{ daselement_resources_path }}
         
-    - name: Find all user home directories (including AD users)
+    - name: Find all .das-element directories for existing users
       ansible.builtin.find:
         paths:
           - /home
           - /home/ad.noxvfx.com
+        patterns: '.das-element'
         file_type: directory
-        recurse: no
-      register: home_directories
-      
-    - name: Filter valid home directories with .das-element folder
-      ansible.builtin.stat:
-        path: "{{ item.path }}/.das-element"
-      loop: "{{ home_directories.files }}"
+        recurse: yes
+        hidden: yes
       register: das_element_dirs
       
-    - name: Overwrite variables.env file with environment variables for existing users
+    - name: Overwrite variables.env file with environment variables for all existing users
       ansible.builtin.copy:
-        dest: "{{ item.item.path }}/.das-element/variables.env"
-        owner: "{{ item.item.path | basename }}"
-        group: "{{ item.item.path | basename }}"
+        dest: "{{ item.path }}/variables.env"
         mode: '0644'
         force: yes
         content: |
@@ -91,5 +85,4 @@
           
           #### path to the resources folder, for presets, hooks, etc.
           DASELEMENT_RESOURCES={{ daselement_resources_path }}
-      loop: "{{ das_element_dirs.results }}"
-      when: item.stat.exists and item.stat.isdir
+      loop: "{{ das_element_dirs.files }}"
