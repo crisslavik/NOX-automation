@@ -9,22 +9,8 @@
     # GNOME theme configuration
     enable_dark_theme: true
     install_extensions: true
-    # configure_favorites: true
     optimize_for_vfx: true
     
-    # GNOME favorites (includes all NOX VFX software)
-    # gnome_favorites:
-    #   - 'org.gnome.Nautilus.desktop'          # File Manager
-    #   - 'google-chrome.desktop'               # Google Chrome
-    #   - 'com.slack.Slack.desktop'             # Slack
-    #   - 'code.desktop'                        # VS Code
-    #   - 'sublime_text.desktop'                # Sublime Text
-    #   - 'org.kde.krita.desktop'               # Krita
-    #   - 'org.blender.Blender.desktop'         # Blender
-    #   - 'pureref.desktop'                     # PureRef
-    #   - 'org.gnome.Extensions.desktop'        # GNOME Extensions
-    #   - 'org.gnome.tweaks.desktop'            # GNOME Tweaks
-
   tasks:
     - name: Display GNOME configuration plan
       ansible.builtin.debug:
