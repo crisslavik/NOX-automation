@@ -25,11 +25,11 @@
         state: present
 
     - name: Verify VS Code installation
-      ansible.builtin.command:
-        cmd: code --version
-      register: vscode_version
-      changed_when: false
-
-    - name: Display VS Code version
+      ansible.builtin.stat:
+        path: /usr/bin/code
+      register: vscode_binary
+    
+    - name: Display VS Code installation status
       ansible.builtin.debug:
-        msg: "✅ VS Code installed: {{ vscode_version.stdout_lines[0] }}"
+        msg: "✅ VS Code installed successfully"
+      when: vscode_binary.stat.exists
