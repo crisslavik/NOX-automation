@@ -4,25 +4,25 @@
   hosts: all
   become: yes
   vars:
-  sublime_download_page: "https://www.sublimetext.com/download"
-  sublime_rpm_dest: "/tmp/sublime-text.rpm"
+    sublime_download_page: "https://www.sublimetext.com/download"
+    sublime_rpm_dest: "/tmp/sublime-text.rpm"
+    
+  tasks:
+    - name: Get latest Sublime Text RPM download URL
+      ansible.builtin.uri:
+        url: "{{ sublime_download_page }}"
+        return_content: yes
+      register: sublime_page
+      delegate_to: localhost
+      run_once: yes
 
-tasks:
-  - name: Get latest Sublime Text RPM download URL
-    ansible.builtin.uri:
-      url: "{{ sublime_download_page }}"
-      return_content: yes
-    register: sublime_page
-    delegate_to: localhost
-    run_once: yes
+    - name: Extract RPM URL from download page
+      ansible.builtin.set_fact:
+        sublime_rpm_url: "{{ sublime_page.content | regex_search('https://download.sublimetext.com/sublime_text[^\"]*\\.x86_64\\.rpm') }}"
+      delegate_to: localhost
+      run_once: yes
 
-  - name: Extract RPM URL from download page
-    ansible.builtin.set_fact:
-      sublime_rpm_url: "{{ sublime_page.content | regex_search('https://download.sublimetext.com/sublime_text[^\"]*\\.x86_64\\.rpm') }}"
-    delegate_to: localhost
-    run_once: yes
-
-  - name: Display found RPM URL
-    ansible.builtin.debug:
-      msg: "Latest RPM URL: {{ sublime_rpm_url }}"
-    run_once: yes
+    - name: Display found RPM URL
+      ansible.builtin.debug:
+        msg: "Latest RPM URL: {{ sublime_rpm_url }}"
+      run_once: yes
