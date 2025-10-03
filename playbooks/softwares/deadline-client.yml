@@ -15,7 +15,7 @@
     
   tasks:
     # STEP 1: Install Dependencies
-    - name: Enable EPEL and CRB repositories
+    - name: Enable EPEL repository
       ansible.builtin.dnf:
         name:
           - epel-release
@@ -82,14 +82,14 @@
       failed_when: not cert_file.stat.exists
       tags: certificates
 
-    # STEP 3: Silent Installation
+    # STEP 3: Silent Installation (User-Controlled Mode)
     - name: Check if Deadline is already installed
       ansible.builtin.stat:
         path: "{{ deadline_install_path }}"
       register: deadline_installed
       tags: install
 
-    - name: Install Deadline Client in silent mode
+    - name: Install Deadline Client in silent mode (no daemon)
       ansible.builtin.command:
         cmd: >
           /tmp/deadline_install/{{ deadline_installer }}
@@ -99,10 +99,9 @@
           --proxyrootdir {{ rcs_server }}:{{ rcs_port }}
           --proxycertificate {{ client_cert_path }}
           --proxycertificatepassword {{ client_cert_password }}
-          --slavestartup true
-          --launcherstartup true
-          --launcherdaemon true
-          --daemonuser root
+          --slavestartup false
+          --launcherstartup false
+          --launcherdaemon false
           --blockautoupdateoverride Blocked
           --installer-language en
       args:
@@ -116,6 +115,40 @@
         var: install_result
       when: install_result.changed
       tags: install
+
+    # STEP 3b: Fix existing installations - stop and disable daemon
+    - name: Stop Deadline launcher daemon if running
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        state: stopped
+      failed_when: false
+      tags: 
+        - install
+        - fix_daemon
+
+    - name: Disable Deadline launcher daemon
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        enabled: no
+      failed_when: false
+      tags:
+        - install
+        - fix_daemon
+
+    - name: Remove daemon service file
+      ansible.builtin.file:
+        path: /etc/systemd/system/deadline10launcher.service
+        state: absent
+      tags:
+        - install
+        - fix_daemon
+
+    - name: Reload systemd after removing service
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      tags:
+        - install
+        - fix_daemon
 
     # STEP 4: Configure for Existing AD Users
     - name: Find all existing AD user home directories
@@ -175,7 +208,7 @@
           Enabled=True
       tags: configure_skel
 
-# STEP 6: Configure Desktop Shortcuts
+    # STEP 6: Configure Desktop Shortcuts (Fixed)
     - name: Create .local/share/applications directory for existing AD users
       ansible.builtin.file:
         path: "{{ item.path }}/.local/share/applications"
@@ -186,13 +219,13 @@
       loop: "{{ ad_user_homes.files }}"
       tags: desktop_shortcuts
 
-    - name: Copy Deadline desktop files for existing AD users
+    - name: Copy original Deadline desktop files for existing AD users
       ansible.builtin.copy:
         src: "{{ deadline_install_path }}/{{ item[1] }}"
         dest: "{{ item[0].path }}/.local/share/applications/{{ item[1] }}"
         owner: "{{ item[0].path | basename }}"
         group: "{{ item[0].gid }}"
-        mode: '0755'
+        mode: '0644'
         remote_src: yes
       loop: "{{ ad_user_homes.files | product(['deadlinelauncher10.desktop', 'deadlinemonitor10.desktop', 'deadlineworker10.desktop']) | list }}"
       tags: desktop_shortcuts
@@ -204,23 +237,16 @@
         mode: '0755'
       tags: desktop_shortcuts
 
-    - name: Copy Deadline desktop files to /etc/skel
+    - name: Copy original Deadline desktop files to /etc/skel
       ansible.builtin.copy:
         src: "{{ deadline_install_path }}/{{ item }}"
         dest: /etc/skel/.local/share/applications/{{ item }}
-        mode: '0755'
+        mode: '0644'
         remote_src: yes
       loop:
         - deadlinelauncher10.desktop
         - deadlinemonitor10.desktop
         - deadlineworker10.desktop
-      tags: desktop_shortcuts
-
-    - name: Set desktop files as trusted for existing AD users
-      ansible.builtin.command:
-        cmd: gio set {{ item[0].path }}/.local/share/applications/{{ item[1] }} metadata::trusted yes
-      become_user: "{{ item[0].path | basename }}"
-      loop: "{{ ad_user_homes.files | product(['deadlinelauncher10.desktop', 'deadlinemonitor10.desktop', 'deadlineworker10.desktop']) | list }}"
       tags: desktop_shortcuts
 
     # STEP 7: Configure Deadline Environment
@@ -258,9 +284,10 @@
           - Installation path: {{ deadline_install_path }}
           - Repository: {{ deadline_repo_path }}
           - RCS Server: {{ rcs_server }}:{{ rcs_port }}
+          - Mode: USER-CONTROLLED (no daemon)
+          - Artists can launch Deadline Launcher from desktop
+          - Artists control when Worker starts/stops
           - Configured for existing AD users in {{ ad_home_base }}
           - Configured for future users via /etc/skel
           - Desktop shortcuts added for Launcher, Monitor, and Worker
-          - Launcher daemon running and will auto-start on boot
-          - Worker will start automatically when Launcher starts
       tags: always
