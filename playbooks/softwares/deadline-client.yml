@@ -261,45 +261,31 @@
           Enabled=True
       tags: configure_skel
 
-    # STEP 8: Configure Desktop Shortcuts
-    - name: Create .local/share/applications directory for existing AD users
-      ansible.builtin.file:
-        path: "{{ item.path }}/.local/share/applications"
-        state: directory
-        owner: "{{ item.path | basename }}"
-        group: "{{ item.gid }}"
-        mode: '0755'
-      loop: "{{ ad_user_homes.files }}"
-      tags: desktop_shortcuts
-
-    - name: Copy original Deadline desktop files for existing AD users
-      ansible.builtin.copy:
-        src: "{{ deadline_install_path }}/{{ item[1] }}"
-        dest: "{{ item[0].path }}/.local/share/applications/{{ item[1] }}"
-        owner: "{{ item[0].path | basename }}"
-        group: "{{ item[0].gid }}"
-        mode: '0755'
-        remote_src: yes
-      loop: "{{ ad_user_homes.files | product(['deadlinelauncher10.desktop', 'deadlinemonitor10.desktop', 'deadlineworker10.desktop']) | list }}"
-      tags: desktop_shortcuts
-
-    - name: Create .local/share/applications directory in /etc/skel
-      ansible.builtin.file:
-        path: /etc/skel/.local/share/applications
-        state: directory
-        mode: '0755'
-      tags: desktop_shortcuts
-
-    - name: Copy original Deadline desktop files to /etc/skel
+    # STEP 8: Configure Desktop Shortcuts (System-wide and working)
+    - name: Copy Deadline desktop files to system applications
       ansible.builtin.copy:
         src: "{{ deadline_install_path }}/{{ item }}"
-        dest: /etc/skel/.local/share/applications/{{ item }}
-        mode: '0755'
+        dest: /usr/share/applications/{{ item }}
+        mode: '0644'
         remote_src: yes
       loop:
         - deadlinelauncher10.desktop
         - deadlinemonitor10.desktop
         - deadlineworker10.desktop
+      tags: desktop_shortcuts
+
+    - name: Fix Monitor desktop file to launch directly
+      ansible.builtin.lineinfile:
+        path: /usr/share/applications/deadlinemonitor10.desktop
+        regexp: '^Exec='
+        line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlinemonitor'
+      tags: desktop_shortcuts
+
+    - name: Fix Worker desktop file to launch directly
+      ansible.builtin.lineinfile:
+        path: /usr/share/applications/deadlineworker10.desktop
+        regexp: '^Exec='
+        line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlineslave'
       tags: desktop_shortcuts
 
     # STEP 9: Configure Deadline Environment
