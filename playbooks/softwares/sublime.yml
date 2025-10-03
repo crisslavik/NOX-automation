@@ -4,63 +4,25 @@
   hosts: all
   become: yes
   vars:
-    sublime_rpm_file: "editors/sublime_text-4_build_4169.rpm"
-    
-  tasks:
-    - name: Check if Sublime Text RPM exists
-      ansible.builtin.stat:
-        path: "{{ sublime_rpm_file }}"
-      register: sublime_rpm_check
-      delegate_to: localhost
-      become: no
+  sublime_download_page: "https://www.sublimetext.com/download"
+  sublime_rpm_dest: "/tmp/sublime-text.rpm"
 
-    - name: Fail if Sublime Text RPM not found
-      ansible.builtin.fail:
-        msg: |
-          Sublime Text RPM not found at {{ sublime_rpm_file }}. 
-          Download from: https://download.sublimetext.com/sublime_text-4_build_4169-1.x86_64.rpm
-      when: not sublime_rpm_check.stat.exists
+tasks:
+  - name: Get latest Sublime Text RPM download URL
+    ansible.builtin.uri:
+      url: "{{ sublime_download_page }}"
+      return_content: yes
+    register: sublime_page
+    delegate_to: localhost
+    run_once: yes
 
-    - name: Copy Sublime Text RPM to target machine
-      ansible.builtin.copy:
-        src: "{{ sublime_rpm_file }}"
-        dest: "/tmp/sublime-text.rpm"
-        mode: '0644'
+  - name: Extract RPM URL from download page
+    ansible.builtin.set_fact:
+      sublime_rpm_url: "{{ sublime_page.content | regex_search('https://download.sublimetext.com/sublime_text[^\"]*\\.x86_64\\.rpm') }}"
+    delegate_to: localhost
+    run_once: yes
 
-    - name: Install Sublime Text from RPM
-      ansible.builtin.dnf:
-        name: "/tmp/sublime-text.rpm"
-        state: present
-        disable_gpg_check: yes
-      register: sublime_install
-
-    - name: Verify Sublime Text installation
-      ansible.builtin.stat:
-        path: /usr/bin/subl
-      register: sublime_binary
-
-    - name: Display Sublime Text installation status
-      ansible.builtin.debug:
-        msg: "✅ Sublime Text installed successfully"
-      when: sublime_binary.stat.exists
-
-    - name: Create Sublime Text license info
-      ansible.builtin.copy:
-        content: |
-          # Sublime Text License Information
-          # 
-          # Sublime Text is a commercial software that requires a license for continued use.
-          # Each workstation should have a valid license.
-          # 
-          # License management:
-          # - Individual licenses: Enter license key in Help > Enter License
-          # - Business licenses: Contact Sublime HQ for volume licensing
-          # 
-          # More info: https://www.sublimetext.com/buy
-        dest: /usr/share/doc/sublime-text-license-info.txt
-        mode: '0644'
-
-    - name: Clean up temporary RPM file
-      ansible.builtin.file:
-        path: "/tmp/sublime-text.rpm"
-        state: absent
+  - name: Display found RPM URL
+    ansible.builtin.debug:
+      msg: "Latest RPM URL: {{ sublime_rpm_url }}"
+    run_once: yes
