@@ -163,7 +163,7 @@
         - install
         - fix_daemon
 
-   # STEP 4: Configure Render User
+    # STEP 4: Configure Render User
     - name: Check if render user home directory exists
       ansible.builtin.stat:
         path: "{{ ad_home_base }}/{{ render_user }}"
@@ -192,6 +192,16 @@
       when: not render_home_verify.stat.exists
       tags: configure_render_user
 
+    - name: Ensure render user home directory has correct ownership
+      ansible.builtin.file:
+        path: "{{ ad_home_base }}/{{ render_user }}"
+        state: directory
+        owner: "{{ render_user }}"
+        group: "domain users"
+        mode: '0700'
+        recurse: yes
+      tags: configure_render_user
+
     - name: Create .deadline directory for render user
       ansible.builtin.file:
         path: "{{ ad_home_base }}/{{ render_user }}/.deadline"
@@ -199,6 +209,23 @@
         owner: "{{ render_user }}"
         group: "domain users"
         mode: '0755'
+      tags: configure_render_user
+
+    - name: Configure deadline.ini for render user
+      ansible.builtin.copy:
+        dest: "{{ ad_home_base }}/{{ render_user }}/.deadline/deadline.ini"
+        owner: "{{ render_user }}"
+        group: "domain users"
+        mode: '0644'
+        content: |
+          [ConnectionType]
+          Type=Remote
+          [Proxy]
+          Root={{ rcs_server }}:{{ rcs_port }}
+          SSLCertificate={{ client_cert_path }}
+          [AutoConfiguration]
+          Enabled=True
+        force: yes
       tags: configure_render_user
 
     # STEP 5: Configure for Existing AD Users (Artists)
