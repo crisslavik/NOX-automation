@@ -155,9 +155,9 @@
               echo "✅ Terminal theme applied"
           fi
           
-          # Create flag file to prevent re-running full config
+        # Create flag file to prevent re-running full config
           mkdir -p "$(dirname "$CONFIG_FLAG")"
-          cat > "$CONFIG_FLAG" << EOF
+          cat > "$CONFIG_FLAG" <<'EOFMARKER'
 NOX VFX GNOME Configuration Applied
 Date: $(date)
 User: $(whoami)
@@ -170,7 +170,7 @@ To force reconfiguration, run: /usr/local/bin/set-nox-gnome-config.sh --force
 
 Note: Theme settings are refreshed on every login, but Dash-to-Dock
 and other user preferences are only set once to preserve your customizations.
-EOF
+EOFMARKER
           echo "✅ Configuration flag created: $CONFIG_FLAG"
       }
       
