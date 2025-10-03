@@ -268,6 +268,7 @@
         dest: /usr/share/applications/{{ item }}
         mode: '0644'
         remote_src: yes
+      become: yes
       loop:
         - deadlinelauncher10.desktop
         - deadlinemonitor10.desktop
@@ -279,6 +280,7 @@
         path: /usr/share/applications/deadlinemonitor10.desktop
         regexp: '^Exec='
         line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlinemonitor'
+      become: yes
       tags: desktop_shortcuts
 
     - name: Fix Worker desktop file to launch directly
@@ -286,6 +288,7 @@
         path: /usr/share/applications/deadlineworker10.desktop
         regexp: '^Exec='
         line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlineslave'
+      become: yes
       tags: desktop_shortcuts
 
     # STEP 9: Configure Deadline Environment
