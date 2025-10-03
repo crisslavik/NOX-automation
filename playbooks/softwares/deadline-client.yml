@@ -12,6 +12,7 @@
     client_cert_path: "/mnt/Library/_deadlinerepo/certs/Deadline10RemoteClient.pfx"
     client_cert_password: "N0Xdeadline"
     ad_home_base: "/home/ad.noxvfx.com"
+    render_user: "render"
     
   tasks:
     # STEP 1: Install Dependencies
@@ -82,14 +83,14 @@
       failed_when: not cert_file.stat.exists
       tags: certificates
 
-    # STEP 3: Silent Installation (User-Controlled Mode)
+    # STEP 3: Silent Installation (Hybrid Mode with Render User)
     - name: Check if Deadline is already installed
       ansible.builtin.stat:
         path: "{{ deadline_install_path }}"
       register: deadline_installed
       tags: install
 
-    - name: Install Deadline Client in silent mode (no daemon)
+    - name: Install Deadline Client in silent mode (daemon with render user)
       ansible.builtin.command:
         cmd: >
           /tmp/deadline_install/{{ deadline_installer }}
@@ -100,8 +101,9 @@
           --proxycertificate {{ client_cert_path }}
           --proxycertificatepassword {{ client_cert_password }}
           --slavestartup false
-          --launcherstartup false
-          --launcherdaemon false
+          --launcherstartup true
+          --launcherdaemon true
+          --daemonuser {{ render_user }}
           --blockautoupdateoverride Blocked
           --installer-language en
       args:
@@ -116,7 +118,7 @@
       when: install_result.changed
       tags: install
 
-    # STEP 3b: Fix existing installations - stop and disable daemon
+    # STEP 3b: Fix existing installations - reconfigure daemon for render user
     - name: Stop Deadline launcher daemon if running
       ansible.builtin.systemd:
         name: deadline10launcher
@@ -126,31 +128,75 @@
         - install
         - fix_daemon
 
-    - name: Disable Deadline launcher daemon
-      ansible.builtin.systemd:
-        name: deadline10launcher
-        enabled: no
-      failed_when: false
-      tags:
-        - install
-        - fix_daemon
-
-    - name: Remove daemon service file
-      ansible.builtin.file:
+    - name: Update daemon service file for render user
+      ansible.builtin.lineinfile:
         path: /etc/systemd/system/deadline10launcher.service
-        state: absent
+        regexp: '^User='
+        line: 'User={{ render_user }}'
+      when: deadline_installed.stat.exists
       tags:
         - install
         - fix_daemon
 
-    - name: Reload systemd after removing service
+    - name: Reload systemd after service change
       ansible.builtin.systemd:
         daemon_reload: yes
       tags:
         - install
         - fix_daemon
 
-    # STEP 4: Configure for Existing AD Users
+    - name: Enable Deadline launcher daemon
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        enabled: yes
+      failed_when: false
+      tags:
+        - install
+        - fix_daemon
+
+    - name: Start Deadline launcher daemon
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        state: started
+      failed_when: false
+      tags:
+        - install
+        - fix_daemon
+
+    # STEP 4: Configure Render User
+    - name: Wait for render user home directory to be created
+      ansible.builtin.wait_for:
+        path: "{{ ad_home_base }}/{{ render_user }}"
+        state: present
+        timeout: 30
+      tags: configure_render_user
+
+    - name: Create .deadline directory for render user
+      ansible.builtin.file:
+        path: "{{ ad_home_base }}/{{ render_user }}/.deadline"
+        state: directory
+        owner: "{{ render_user }}"
+        group: "domain users"
+        mode: '0755'
+      tags: configure_render_user
+
+    - name: Configure deadline.ini for render user
+      ansible.builtin.copy:
+        dest: "{{ ad_home_base }}/{{ render_user }}/.deadline/deadline.ini"
+        owner: "{{ render_user }}"
+        group: "domain users"
+        mode: '0644'
+        content: |
+          [ConnectionType]
+          Type=Remote
+          [Proxy]
+          Root={{ rcs_server }}:{{ rcs_port }}
+          SSLCertificate={{ client_cert_path }}
+          [AutoConfiguration]
+          Enabled=True
+      tags: configure_render_user
+
+    # STEP 5: Configure for Existing AD Users (Artists)
     - name: Find all existing AD user home directories
       ansible.builtin.find:
         paths: "{{ ad_home_base }}"
@@ -192,7 +238,7 @@
       loop: "{{ ad_user_homes.files }}"
       tags: configure_users
 
-    # STEP 5: Configure for Future AD Users (/etc/skel/)
+    # STEP 6: Configure for Future AD Users (/etc/skel/)
     - name: Create .deadline directory in /etc/skel
       ansible.builtin.file:
         path: /etc/skel/.deadline
@@ -214,7 +260,7 @@
           Enabled=True
       tags: configure_skel
 
-    # STEP 6: Configure Desktop Shortcuts (Fixed)
+    # STEP 7: Configure Desktop Shortcuts
     - name: Create .local/share/applications directory for existing AD users
       ansible.builtin.file:
         path: "{{ item.path }}/.local/share/applications"
@@ -255,7 +301,7 @@
         - deadlineworker10.desktop
       tags: desktop_shortcuts
 
-    # STEP 7: Configure Deadline Environment
+    # STEP 8: Configure Deadline Environment
     - name: Add Deadline to system PATH
       ansible.builtin.copy:
         dest: /etc/profile.d/deadline.sh
@@ -276,7 +322,7 @@
         msg: "Deadline installed successfully: {{ deadline_version_check.stdout }}"
       tags: verify
 
-    # STEP 8: Cleanup
+    # STEP 9: Cleanup
     - name: Remove temporary installer files
       ansible.builtin.file:
         path: /tmp/deadline_install
@@ -290,9 +336,11 @@
           - Installation path: {{ deadline_install_path }}
           - Repository: {{ deadline_repo_path }}
           - RCS Server: {{ rcs_server }}:{{ rcs_port }}
-          - Mode: USER-CONTROLLED (no daemon)
-          - Artists can launch Deadline Launcher from desktop
-          - Artists control when Worker starts/stops
+          - Mode: HYBRID (daemon running as '{{ render_user }}' user)
+          - Launcher daemon auto-starts on boot
+          - Worker does NOT auto-start (remotely controlled)
+          - Artists can use Monitor to view farm and manage Workers
+          - Scheduling available via Pulse or command line
           - Configured for existing AD users in {{ ad_home_base }}
           - Configured for future users via /etc/skel
           - Desktop shortcuts added for Launcher, Monitor, and Worker
