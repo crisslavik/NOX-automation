@@ -71,12 +71,10 @@
       when: "'flameshot' in flameshot_check.stdout.lower()"
 
     # ====== CREATE WRAPPER SCRIPT ======
-    - name: Create wrapper script with date-based folder logic
+    - name: Create wrapper script
       ansible.builtin.copy:
         content: |
           #!/bin/bash
-          export FLAMESHOT_CAPTURE_PATH="$HOME/Pictures/Screenshots/$(date +%Y-%m-%d)"
-          mkdir -p "$FLAMESHOT_CAPTURE_PATH"
           flatpak run org.flameshot.Flameshot "$@"
         dest: /usr/local/bin/flameshot
         mode: '0755'
@@ -109,8 +107,9 @@
           saveAfterCopy=true
           copyAndCloseAfterUpload=true
           savePathFixed=true
-          filenamePattern=%Y-%m-%d_%H-%M-%S
-          saveAsFileExtension=jpg
+          savePath=/home/$USER/Pictures/Screenshots
+          filenamePattern=%Y-%m-%d/%Y-%m-%d_%H-%M-%S
+          saveAsFileExtension=.jpg
           uiColor=#8b38b8
           
           [Shortcuts]
@@ -145,7 +144,38 @@
             
             # Create config directory
             mkdir -p "$home_dir/.config/flameshot"
-            cp /etc/skel/.config/flameshot/flameshot.ini "$home_dir/.config/flameshot/flameshot.ini"
+            
+            # Create config file with proper user path
+            cat > "$home_dir/.config/flameshot/flameshot.ini" << 'EOF'
+        [General]
+        disabledTrayIcon=true
+        showStartupLaunchMessage=false
+        saveAfterCopy=true
+        copyAndCloseAfterUpload=true
+        savePathFixed=true
+        savePath=$home_dir/Pictures/Screenshots
+        filenamePattern=%Y-%m-%d/%Y-%m-%d_%H-%M-%S
+        saveAsFileExtension=.jpg
+        uiColor=#8b38b8
+        
+        [Shortcuts]
+        TYPE_ARROW=A
+        TYPE_CIRCLE=C
+        TYPE_COMMIT_CURRENT_TOOL=Ctrl+Return
+        TYPE_COPY=Ctrl+C
+        TYPE_DRAWER=D
+        TYPE_MARKER=M
+        TYPE_PENCIL=P
+        TYPE_RECTANGLE=R
+        TYPE_REDO=Ctrl+Shift+Z
+        TYPE_SAVE=Ctrl+S
+        TYPE_SELECTION=S
+        TYPE_TEXT=T
+        TYPE_UNDO=Ctrl+Z
+        EOF
+            
+            # Replace $home_dir with actual path
+            sed -i "s|\$home_dir|$home_dir|g" "$home_dir/.config/flameshot/flameshot.ini"
             
             # Create Screenshots directory with date subfolder
             mkdir -p "$home_dir/Pictures/Screenshots/$(date +%Y-%m-%d)"
