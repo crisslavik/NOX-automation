@@ -6,15 +6,16 @@
     cache_mount_point: "/mnt/Cache"
 
   tasks:
-    - name: Install XFS tools
+    - name: Install filesystem tools
       ansible.builtin.dnf:
-        name: xfsprogs
+        name:
+          - xfsprogs
+          - e2fsprogs
         state: present
 
-    - name: Find cache disk by label
-      ansible.builtin.command: blkid -L Cache
+    - name: Find cache disk by label (case-insensitive)
+      ansible.builtin.shell: blkid -L Cache 2>/dev/null || blkid -L cache 2>/dev/null || true
       register: cache_disk_labeled
-      failed_when: false
       changed_when: false
 
     - name: If no labeled cache disk, find unformatted ~1TB disk
@@ -80,24 +81,28 @@
           when: cache_device is defined
 
         - name: Refresh cache disk label
-          ansible.builtin.command: blkid -L Cache
+          ansible.builtin.shell: blkid -L Cache 2>/dev/null || blkid -L cache 2>/dev/null || true
           register: cache_disk_labeled
           changed_when: false
           when: cache_device is defined
 
-      when: cache_disk_labeled.rc != 0
+      when: cache_disk_labeled.stdout == ""
 
     - name: Set cache disk path
       ansible.builtin.set_fact:
         cache_disk_path: "{{ cache_disk_labeled.stdout }}"
       when: 
-        - cache_disk_labeled is defined
-        - cache_disk_labeled.rc is defined
-        - cache_disk_labeled.rc == 0
+        - cache_disk_labeled.stdout != ""
 
     - name: Display cache disk found
       ansible.builtin.debug:
         msg: "Cache disk found: {{ cache_disk_path }}"
+      when: cache_disk_path is defined
+
+    - name: Get filesystem type of cache disk
+      ansible.builtin.shell: "blkid -s TYPE -o value {{ cache_disk_path }}"
+      register: cache_fstype
+      changed_when: false
       when: cache_disk_path is defined
 
     - name: Stop autofs to create mount point
@@ -120,24 +125,38 @@
       changed_when: false
       when: cache_disk_path is defined
 
+    - name: Check if cache is already in fstab
+      ansible.builtin.shell: "grep -q '{{ cache_mount_point }}' /etc/fstab"
+      register: fstab_check
+      failed_when: false
+      changed_when: false
+      when: cache_disk_path is defined
+
     - name: Add cache disk to fstab
       ansible.builtin.mount:
         path: "{{ cache_mount_point }}"
         src: "UUID={{ cache_uuid.stdout }}"
-        fstype: xfs
+        fstype: "{{ cache_fstype.stdout }}"
         opts: defaults,noatime
         state: present
         backup: yes
-      when: cache_disk_path is defined and cache_uuid.stdout != ""
+      when: 
+        - cache_disk_path is defined
+        - cache_uuid.stdout != ""
+        - fstab_check.rc != 0
 
     - name: Mount cache disk
       ansible.builtin.mount:
         path: "{{ cache_mount_point }}"
         src: "UUID={{ cache_uuid.stdout }}"
-        fstype: xfs
+        fstype: "{{ cache_fstype.stdout }}"
         opts: defaults,noatime
         state: mounted
       when: cache_disk_path is defined and cache_uuid.stdout != ""
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
 
     - name: Set Cache directory permissions for all users
       ansible.builtin.file:
@@ -171,6 +190,7 @@
         msg:
           - "Cache disk setup complete!"
           - "Mount point: {{ cache_mount_point }}"
+          - "Filesystem: {{ cache_fstype.stdout if cache_fstype is defined and cache_fstype.stdout else 'N/A' }}"
           - "Permissions: 1777 (world-writable with sticky bit)"
           - "All users can read/write to this directory"
           - "Applications can use this as cache storage"
