@@ -226,30 +226,29 @@
         mode: '0755'
 
     - name: Fix existing AD home directories ownership
-      ansible.builtin.shell: |
-        if [ -d /home/{{ domain_name }} ]; then
-          for user_dir in /home/{{ domain_name }}/*/; do
-            if [ -d "$user_dir" ]; then
-              username=$(basename "$user_dir")
-              # Check if directory is owned by root
-              if [ "$(stat -c '%U' "$user_dir")" = "root" ]; then
-                # Get the user's UID and GID
-                user_uid=$(id -u "$username" 2>/dev/null)
-                user_gid=$(id -g "$username" 2>/dev/null)
-                if [ -n "$user_uid" ] && [ -n "$user_gid" ]; then
-                  chown "$user_uid:$user_gid" "$user_dir"
-                  chmod 700 "$user_dir"
-                  restorecon -R "$user_dir" 2>/dev/null || true
-                  echo "Fixed ownership for $username"
-                fi
-              fi
-            fi
-          done
-        fi
+      ansible.builtin.shell: >
+        for user_dir in /home/{{ domain_name }}/*/; do
+          if [ -d "$user_dir" ]; then
+            username=$(basename "$user_dir");
+            home_owner=$(stat -c '%U' "$user_dir");
+            if [ "$home_owner" = "root" ]; then
+              user_uid=$(id -u "$username" 2>/dev/null);
+              user_gid=$(id -g "$username" 2>/dev/null);
+              if [ -n "$user_uid" ] && [ -n "$user_gid" ]; then
+                chown "$user_uid:$user_gid" "$user_dir";
+                chmod 700 "$user_dir";
+                restorecon -R "$user_dir" 2>/dev/null || true;
+                echo "Fixed ownership for $username";
+              fi;
+            fi;
+          fi;
+        done
       args:
         executable: /bin/bash
       register: fix_homes_result
       changed_when: "'Fixed ownership' in fix_homes_result.stdout"
+      when: ansible_facts['file']['/home/' + domain_name] is defined or true
+      ignore_errors: yes
 
     - name: Display fixed home directories
       ansible.builtin.debug:
