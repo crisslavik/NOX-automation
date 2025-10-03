@@ -163,12 +163,33 @@
         - install
         - fix_daemon
 
-    # STEP 4: Configure Render User
-    - name: Wait for render user home directory to be created
-      ansible.builtin.wait_for:
+   # STEP 4: Configure Render User
+    - name: Check if render user home directory exists
+      ansible.builtin.stat:
         path: "{{ ad_home_base }}/{{ render_user }}"
-        state: present
-        timeout: 30
+      register: render_home_check
+      tags: configure_render_user
+
+    - name: Trigger render user home directory creation
+      ansible.builtin.command: su - {{ render_user }} -c "exit"
+      when: not render_home_check.stat.exists
+      failed_when: false
+      tags: configure_render_user
+
+    - name: Verify render user home directory was created
+      ansible.builtin.stat:
+        path: "{{ ad_home_base }}/{{ render_user }}"
+      register: render_home_verify
+      tags: configure_render_user
+
+    - name: Create render user home directory if it still doesn't exist
+      ansible.builtin.file:
+        path: "{{ ad_home_base }}/{{ render_user }}"
+        state: directory
+        owner: "{{ render_user }}"
+        group: "domain users"
+        mode: '0700'
+      when: not render_home_verify.stat.exists
       tags: configure_render_user
 
     - name: Create .deadline directory for render user
@@ -178,22 +199,6 @@
         owner: "{{ render_user }}"
         group: "domain users"
         mode: '0755'
-      tags: configure_render_user
-
-    - name: Configure deadline.ini for render user
-      ansible.builtin.copy:
-        dest: "{{ ad_home_base }}/{{ render_user }}/.deadline/deadline.ini"
-        owner: "{{ render_user }}"
-        group: "domain users"
-        mode: '0644'
-        content: |
-          [ConnectionType]
-          Type=Remote
-          [Proxy]
-          Root={{ rcs_server }}:{{ rcs_port }}
-          SSLCertificate={{ client_cert_path }}
-          [AutoConfiguration]
-          Enabled=True
       tags: configure_render_user
 
     # STEP 5: Configure for Existing AD Users (Artists)
