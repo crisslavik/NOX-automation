@@ -92,6 +92,8 @@
       ansible.builtin.set_fact:
         cache_disk_path: "{{ cache_disk_labeled.stdout }}"
       when: 
+        - cache_disk_labeled is defined
+        - cache_disk_labeled.stdout is defined
         - cache_disk_labeled.stdout != ""
 
     - name: Display cache disk found
