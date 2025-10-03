@@ -1,34 +1,30 @@
 ---
-# Install Sublime Text from RPM
+# Install Sublime Text from official repository
 - name: Install Sublime Text
   hosts: all
-  become: no
-  vars:
-    sublime_download_page: "https://www.sublimetext.com/download"
-    sublime_rpm_dest: "/tmp/sublime-text.rpm"
+  become: yes
     
   tasks:
-    - name: Get latest Sublime Text RPM download URL
-      ansible.builtin.uri:
-        url: "{{ sublime_download_page }}"
-        return_content: yes
-      register: sublime_page
-      delegate_to: localhost
-      run_once: yes
-    
-    - name: Debug - Show page content snippet
+    - name: Add Sublime Text repository
+      ansible.builtin.yum_repository:
+        name: sublime-text
+        description: Sublime Text - x86_64 - Stable
+        baseurl: https://download.sublimetext.com/rpm/stable/x86_64
+        gpgcheck: yes
+        gpgkey: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
+        enabled: yes
+
+    - name: Install Sublime Text
+      ansible.builtin.dnf:
+        name: sublime-text
+        state: present
+
+    - name: Verify Sublime Text installation
+      ansible.builtin.command:
+        cmd: subl --version
+      register: sublime_version
+      changed_when: false
+
+    - name: Display Sublime Text version
       ansible.builtin.debug:
-        msg: "{{ sublime_page.content | regex_search('.*x86_64\\.rpm.*', multiline=True) }}"
-      delegate_to: localhost
-      run_once: yes
-    
-    - name: Display found RPM URL
-      ansible.builtin.debug:
-        msg: "Latest RPM URL: {{ sublime_rpm_url }}"
-      run_once: yes
-    
-    - name: Fail if URL not found
-      ansible.builtin.fail:
-        msg: "Could not extract RPM URL from download page"
-      when: sublime_rpm_url == ""
-      run_once: yes
+        msg: "✅ Sublime Text installed: {{ sublime_version.stdout }}"
