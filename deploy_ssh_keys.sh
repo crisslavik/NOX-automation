@@ -7,7 +7,6 @@
 #    
 # 2. Create a file named 'password.txt' in the same directory.
 #    Write your root password on the first line.
-#    
 #    chmod 600 password.txt  # <-- SECURE THIS FILE!
 
 # ANSI color codes for messages
