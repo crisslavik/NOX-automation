@@ -133,7 +133,7 @@
         path: /etc/systemd/system/deadline10launcher.service
         regexp: '^User='
         line: 'User={{ render_user }}'
-      when: deadline_installed.stat.exists
+      failed_when: false
       tags:
         - install
         - fix_daemon
