@@ -15,10 +15,10 @@
       register: sublime_page
       delegate_to: localhost
       run_once: yes
-
-    - name: Extract RPM URL from download page
-      ansible.builtin.set_fact:
-        sublime_rpm_url: "{{ sublime_page.content | regex_search('https://download\\.sublimetext\\.com/sublime_text-[0-9]_build_[0-9]+-[0-9]\\.x86_64\\.rpm') }}"
+    
+    - name: Debug - Show page content snippet
+      ansible.builtin.debug:
+        msg: "{{ sublime_page.content | regex_search('.*x86_64\\.rpm.*', multiline=True) }}"
       delegate_to: localhost
       run_once: yes
     
