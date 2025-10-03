@@ -1,82 +1,35 @@
 ---
-# Install VS Code from RPM
+# Install Visual Studio Code from official repository
 - name: Install Visual Studio Code
   hosts: all
   become: yes
-  vars:
-    vscode_rpm_file: "editors/code-stable-x86_64.rpm"
     
   tasks:
-    - name: Check if VS Code RPM exists
-      ansible.builtin.stat:
-        path: "{{ vscode_rpm_file }}"
-      register: vscode_rpm_check
-      delegate_to: localhost
-      become: no
-
-    - name: Fail if VS Code RPM not found
-      ansible.builtin.fail:
-        msg: |
-          VS Code RPM not found at {{ vscode_rpm_file }}. 
-          Download from: https://code.visualstudio.com/sha/download?build=stable&os=linux-rpm-x64
-      when: not vscode_rpm_check.stat.exists
-
-    - name: Copy VS Code RPM to target machine
-      ansible.builtin.copy:
-        src: "{{ vscode_rpm_file }}"
-        dest: "/tmp/code-stable.rpm"
-        mode: '0644'
-
-    - name: Install VS Code from RPM
-      ansible.builtin.dnf:
-        name: "/tmp/code-stable.rpm"
+    - name: Import Microsoft GPG key
+      ansible.builtin.rpm_key:
         state: present
-        disable_gpg_check: yes
-      register: vscode_install
+        key: https://packages.microsoft.com/keys/microsoft.asc
+
+    - name: Add Visual Studio Code repository
+      ansible.builtin.yum_repository:
+        name: vscode
+        description: Visual Studio Code
+        baseurl: https://packages.microsoft.com/yumrepos/vscode
+        gpgcheck: yes
+        gpgkey: https://packages.microsoft.com/keys/microsoft.asc
+        enabled: yes
+
+    - name: Install Visual Studio Code
+      ansible.builtin.dnf:
+        name: code
+        state: present
 
     - name: Verify VS Code installation
-      ansible.builtin.command: code --version
+      ansible.builtin.command:
+        cmd: code --version
       register: vscode_version
       changed_when: false
 
     - name: Display VS Code version
       ansible.builtin.debug:
         msg: "✅ VS Code installed: {{ vscode_version.stdout_lines[0] }}"
-
-    - name: Install useful VS Code extensions for VFX work
-      ansible.builtin.shell: |
-        # Install extensions as each user (this runs when users log in)
-        cat << 'EOF' > /etc/profile.d/vscode-extensions.sh
-        #!/bin/bash
-        # Install VS Code extensions for VFX users (runs once per user)
-        
-        if command -v code >/dev/null 2>&1 && [ -n "$DISPLAY" ]; then
-            EXTENSIONS_INSTALLED_FLAG="$HOME/.vscode-nox-extensions-installed"
-            
-            if [ ! -f "$EXTENSIONS_INSTALLED_FLAG" ]; then
-                echo "Installing VS Code extensions for VFX work..."
-                
-                # Python development
-                code --install-extension ms-python.python 2>/dev/null || true
-                
-                # Git integration
-                code --install-extension eamodio.gitlens 2>/dev/null || true
-                
-                # JSON/YAML editing
-                code --install-extension redhat.vscode-yaml 2>/dev/null || true
-                
-                # Color themes for VFX work
-                code --install-extension zhuangtongfa.Material-theme 2>/dev/null || true
-                
-                # Mark as installed
-                touch "$EXTENSIONS_INSTALLED_FLAG"
-                echo "VS Code extensions installed for $(whoami)"
-            fi
-        fi
-        EOF
-        chmod +x /etc/profile.d/vscode-extensions.sh
-
-    - name: Clean up temporary RPM file
-      ansible.builtin.file:
-        path: "/tmp/code-stable.rpm"
-        state: absent
