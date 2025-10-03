@@ -105,6 +105,7 @@
         name: autofs
         state: stopped
       when: cache_disk_path is defined
+      ignore_errors: yes
 
     - name: Create cache mount point
       ansible.builtin.file:
@@ -152,6 +153,7 @@
         name: autofs
         state: started
       when: cache_disk_path is defined
+      ignore_errors: yes
 
     - name: Verify cache disk is mounted
       ansible.builtin.command: "df -h {{ cache_mount_point }}"
@@ -164,38 +166,12 @@
         msg: "{{ cache_verify.stdout_lines }}"
       when: cache_verify.rc == 0
 
-    - name: Add Cache bookmark for all users (PAM script)
-      ansible.builtin.copy:
-        content: |
-          #!/bin/bash
-          # Add Cache bookmark to GNOME Files
-          
-          USER_HOME=$(eval echo ~$PAM_USER)
-          BOOKMARKS_FILE="$USER_HOME/.config/gtk-3.0/bookmarks"
-          
-          # Ensure directory exists
-          mkdir -p "$USER_HOME/.config/gtk-3.0"
-          
-          # Add Cache bookmark
-          BOOKMARK="file://{{ cache_mount_point }} Cache"
-          if ! grep -Fxq "$BOOKMARK" "$BOOKMARKS_FILE" 2>/dev/null; then
-              echo "$BOOKMARK" >> "$BOOKMARKS_FILE"
-          fi
-          
-          # Fix ownership
-          USER_UID=$(id -u "$PAM_USER")
-          USER_GID=$(id -g "$PAM_USER")
-          chown "$USER_UID:$USER_GID" "$BOOKMARKS_FILE" 2>/dev/null || true
-          chmod 644 "$BOOKMARKS_FILE" 2>/dev/null || true
-          
-          exit 0
-        dest: /usr/share/libpam-script/pam_script_cache_bookmark.sh
-        mode: '0755'
-
-    - name: Add cache bookmark script to main PAM script
-      ansible.builtin.lineinfile:
-        path: /usr/share/libpam-script/pam_script_ses_open
-        line: "/usr/share/libpam-script/pam_script_cache_bookmark.sh"
-        insertbefore: "^exit 0"
-        state: present
-        backup: yes
+    - name: Display cache setup summary
+      ansible.builtin.debug:
+        msg:
+          - "Cache disk setup complete!"
+          - "Mount point: {{ cache_mount_point }}"
+          - "Permissions: 1777 (world-writable with sticky bit)"
+          - "All users can read/write to this directory"
+          - "Applications can use this as cache storage"
+      when: cache_disk_path is defined
