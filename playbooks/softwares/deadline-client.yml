@@ -156,7 +156,13 @@
         paths: "{{ ad_home_base }}"
         file_type: directory
         recurse: no
-      register: ad_user_homes
+      register: ad_user_homes_raw
+      tags: configure_users
+
+    - name: Filter only actual user directories (UID > 400000000)
+      ansible.builtin.set_fact:
+        ad_user_homes:
+          files: "{{ ad_user_homes_raw.files | selectattr('uid', 'gt', 400000000) | list }}"
       tags: configure_users
 
     - name: Create .deadline directory for existing AD users
