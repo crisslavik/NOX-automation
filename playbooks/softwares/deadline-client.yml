@@ -83,14 +83,14 @@
       failed_when: not cert_file.stat.exists
       tags: certificates
 
-    # STEP 3: Silent Installation (Hybrid Mode with Render User)
+    # STEP 3: Silent Installation (No Daemon - we'll create it manually)
     - name: Check if Deadline is already installed
       ansible.builtin.stat:
         path: "{{ deadline_install_path }}"
       register: deadline_installed
       tags: install
 
-    - name: Install Deadline Client in silent mode (daemon with render user)
+    - name: Install Deadline Client in silent mode (no daemon initially)
       ansible.builtin.command:
         cmd: >
           /tmp/deadline_install/{{ deadline_installer }}
@@ -101,9 +101,8 @@
           --proxycertificate {{ client_cert_path }}
           --proxycertificatepassword {{ client_cert_password }}
           --slavestartup false
-          --launcherstartup true
-          --launcherdaemon true
-          --daemonuser {{ render_user }}
+          --launcherstartup false
+          --launcherdaemon false
           --blockautoupdateoverride Blocked
           --installer-language en
       args:
@@ -118,8 +117,16 @@
       when: install_result.changed
       tags: install
 
-    # STEP 3b: Fix existing installations - reconfigure daemon for render user
-    - name: Stop Deadline launcher daemon if running
+    # STEP 3b: Kill any existing launcher instances
+    - name: Kill all existing Deadline processes
+      ansible.builtin.shell: |
+        killall -9 deadlinelauncher deadlineworker deadlinesandbox 2>/dev/null || true
+      failed_when: false
+      tags:
+        - install
+        - fix_daemon
+
+    - name: Stop any existing deadline service
       ansible.builtin.systemd:
         name: deadline10launcher
         state: stopped
@@ -128,37 +135,41 @@
         - install
         - fix_daemon
 
-    - name: Update daemon service file for render user
-      ansible.builtin.lineinfile:
-        path: /etc/systemd/system/deadline10launcher.service
-        regexp: '^User='
-        line: 'User={{ render_user }}'
-      failed_when: false
+    - name: Create deadline launcher service file
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/deadline10launcher.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Deadline 10 Launcher Service
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ render_user }}
+          WorkingDirectory={{ ad_home_base }}/{{ render_user }}
+          ExecStart={{ deadline_install_path }}/bin/deadlinelauncher -nogui
+          ExecStop={{ deadline_install_path }}/bin/deadlinelauncher -shutdownall
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
       tags:
         - install
         - fix_daemon
 
-    - name: Reload systemd after service change
+    - name: Reload systemd daemon
       ansible.builtin.systemd:
         daemon_reload: yes
       tags:
         - install
         - fix_daemon
 
-    - name: Enable Deadline launcher daemon
+    - name: Enable Deadline launcher service
       ansible.builtin.systemd:
         name: deadline10launcher
         enabled: yes
-      failed_when: false
-      tags:
-        - install
-        - fix_daemon
-
-    - name: Start Deadline launcher daemon
-      ansible.builtin.systemd:
-        name: deadline10launcher
-        state: started
-      failed_when: false
       tags:
         - install
         - fix_daemon
@@ -227,6 +238,14 @@
           Enabled=True
         force: yes
       tags: configure_render_user
+
+    - name: Start Deadline launcher service
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        state: started
+      tags:
+        - configure_render_user
+        - fix_daemon
 
     # STEP 5: Configure for Existing AD Users (Artists)
     - name: Find all existing AD user home directories
