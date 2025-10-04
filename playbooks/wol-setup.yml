@@ -16,89 +16,89 @@
         msg: "Failed to install ethtool on {{ inventory_hostname }}"
       when: ethtool_install.failed | default(false)
 
-    - name: Get active network interface (state UP)
-      shell: "ip -o link show | awk -F': ' '/state UP/ && !/lo:/ {print $2; exit}'"
-      register: active_interface
+    - name: Get all network interfaces (excluding loopback)
+      shell: "ip -o link show | awk -F': ' '!/lo:/ {print $2}' | sed 's/@.*//' | sort -u"
+      register: all_interfaces
       changed_when: false
-      failed_when: active_interface.stdout == ""
 
-    - name: Set interface fact
-      set_fact:
-        wol_interface: "{{ active_interface.stdout }}"
-        wol_status: "unknown"
-
-    - name: Check if interface supports WoL
-      shell: "ethtool {{ wol_interface }} | grep 'Supports Wake-on'"
-      register: wol_check
+    - name: Check WoL support on each interface
+      shell: "ethtool {{ item }} 2>/dev/null | grep 'Supports Wake-on' || echo 'not_supported'"
+      loop: "{{ all_interfaces.stdout_lines }}"
+      register: wol_support_check
       failed_when: false
       changed_when: false
 
-    - name: Set WoL support status
+    - name: Build list of WoL-capable interfaces
       set_fact:
-        wol_supported: "{{ 'g' in wol_check.stdout }}"
-        wol_status: "{{ 'supported' if 'g' in wol_check.stdout else 'not_supported' }}"
+        wol_interfaces: "{{ wol_interfaces | default([]) + [{'name': item.item, 'supported': 'g' in item.stdout}] }}"
+      loop: "{{ wol_support_check.results }}"
+      when: "'g' in item.stdout"
 
-    - name: Get MAC address
-      shell: "ip link show {{ wol_interface }} | awk '/link\\/ether/ {print $2}'"
-      register: mac_address
+    - name: Get MAC addresses for WoL-capable interfaces
+      shell: "ip link show {{ item.name }} | awk '/link\\/ether/ {print $2}'"
+      loop: "{{ wol_interfaces | default([]) }}"
+      register: mac_addresses
       changed_when: false
-      when: wol_supported | bool
 
-    - name: Create WoL systemd service
+    - name: Add MAC addresses to interface list
+      set_fact:
+        wol_interfaces_with_mac: "{{ wol_interfaces_with_mac | default([]) + [{'name': item.item.name, 'mac': item.stdout}] }}"
+      loop: "{{ mac_addresses.results }}"
+
+    - name: Create WoL systemd service for all interfaces
       copy:
-        dest: /etc/systemd/system/wol.service
+        dest: /etc/systemd/system/wol-all.service
         content: |
           [Unit]
-          Description=Enable Wake-on-LAN on {{ wol_interface }}
+          Description=Enable Wake-on-LAN on all supported interfaces
           After=network.target
 
           [Service]
           Type=oneshot
-          ExecStart=/usr/sbin/ethtool -s {{ wol_interface }} wol g
+          {% for iface in wol_interfaces_with_mac | default([]) %}
+          ExecStart=/usr/sbin/ethtool -s {{ iface.name }} wol g
+          {% endfor %}
 
           [Install]
           WantedBy=multi-user.target
         mode: '0644'
-      when: wol_supported | bool
+      when: wol_interfaces_with_mac | default([]) | length > 0
       register: service_created
 
     - name: Enable and start WoL service
       systemd:
-        name: wol.service
+        name: wol-all.service
         enabled: yes
         state: started
         daemon_reload: yes
-      when: wol_supported | bool
+      when: wol_interfaces_with_mac | default([]) | length > 0
       register: service_enabled
 
-    - name: Verify WoL is enabled
-      shell: "ethtool {{ wol_interface }} | grep 'Wake-on:' | awk '{print $2}'"
+    - name: Verify WoL is enabled on all interfaces
+      shell: "ethtool {{ item.name }} | grep 'Wake-on:' | grep -v 'Supports'"
+      loop: "{{ wol_interfaces_with_mac | default([]) }}"
       register: wol_verify
       changed_when: false
-      when: wol_supported | bool
+      failed_when: false
 
-    - name: Update status with result
+    - name: Build verification results
       set_fact:
-        wol_status: "{{ 'enabled' if (wol_verify.stdout | default('') == 'g') else 'failed' }}"
-      when: wol_supported | bool
+        verified_interfaces: "{{ verified_interfaces | default([]) + [{'name': item.item.name, 'mac': item.item.mac, 'status': 'enabled' if 'Wake-on: g' in item.stdout else 'failed'}] }}"
+      loop: "{{ wol_verify.results }}"
+      when: wol_verify.results | length > 0
 
     - name: Set summary facts
       set_fact:
         wol_summary:
           hostname: "{{ inventory_hostname }}"
-          interface: "{{ wol_interface }}"
-          mac_address: "{{ mac_address.stdout | default('N/A') }}"
-          supported: "{{ wol_supported | default(false) }}"
-          status: "{{ wol_status }}"
+          interfaces: "{{ verified_interfaces | default([]) }}"
           ip_address: "{{ ansible_default_ipv4.address | default('N/A') }}"
-
-    - name: Add to summary list
-      set_fact:
-        wol_results: "{{ wol_results | default([]) + [wol_summary] }}"
+          total_interfaces: "{{ (verified_interfaces | default([])) | length }}"
+          enabled_count: "{{ (verified_interfaces | default([]) | selectattr('status', 'equalto', 'enabled') | list) | length }}"
 
 - name: Display Wake-on-LAN Summary Report
   hosts: localhost
-  gather_facts: no
+  gather_facts: yes
   tasks:
     - name: Collect all results
       set_fact:
@@ -108,47 +108,56 @@
       debug:
         msg:
           - "================================================"
-          - "       Wake-on-LAN Configuration Summary"
+          - "  Wake-on-LAN Multi-Interface Configuration"
           - "================================================"
 
     - name: Display results for each host
       debug:
-        msg:
-          - "Host: {{ item.hostname }}"
-          - "  Interface: {{ item.interface }}"
-          - "  MAC Address: {{ item.mac_address }}"
-          - "  IP Address: {{ item.ip_address }}"
-          - "  WoL Supported: {{ 'Yes' if item.supported else 'No' }}"
-          - "  Status: {{ item.status | upper }}"
-          - "---"
+        msg: |
+          Host: {{ item.hostname }}
+            IP Address: {{ item.ip_address }}
+            Total WoL Interfaces: {{ item.total_interfaces }}
+            Successfully Enabled: {{ item.enabled_count }}
+            
+            Interfaces:
+          {% for iface in item.interfaces %}
+              - {{ iface.name }}
+                MAC: {{ iface.mac }}
+                Status: {{ iface.status | upper }}
+          {% endfor %}
+            ---
       loop: "{{ all_results }}"
 
     - name: Create summary report file
       copy:
         content: |
-          Wake-on-LAN Configuration Report
+          Wake-on-LAN Multi-Interface Configuration Report
           Generated: {{ ansible_date_time.iso8601 }}
           ================================================================================
           
           {% for host in all_results %}
           Hostname: {{ host.hostname }}
-            Interface: {{ host.interface }}
-            MAC Address: {{ host.mac_address }}
             IP Address: {{ host.ip_address }}
-            WoL Supported: {{ 'Yes' if host.supported else 'No' }}
-            Status: {{ host.status | upper }}
+            Total WoL-Capable Interfaces: {{ host.total_interfaces }}
+            Successfully Enabled: {{ host.enabled_count }}
+            
+            Interface Details:
+          {% for iface in host.interfaces %}
+              Interface: {{ iface.name }}
+                MAC Address: {{ iface.mac }}
+                Status: {{ iface.status | upper }}
+          {% endfor %}
           
           {% endfor %}
           ================================================================================
-          Summary:
+          Overall Summary:
             Total Hosts: {{ all_results | length }}
-            Successfully Enabled: {{ all_results | selectattr('status', 'equalto', 'enabled') | list | length }}
-            Not Supported: {{ all_results | selectattr('status', 'equalto', 'not_supported') | list | length }}
-            Failed: {{ all_results | selectattr('status', 'equalto', 'failed') | list | length }}
-        dest: "./wol-report-{{ ansible_date_time.date }}.txt"
+            Total Interfaces Configured: {{ all_results | sum(attribute='total_interfaces') }}
+            Total Successfully Enabled: {{ all_results | sum(attribute='enabled_count') }}
+        dest: "./wol-multi-report-{{ ansible_date_time.date }}.txt"
       delegate_to: localhost
       run_once: yes
 
     - name: Display report location
       debug:
-        msg: "Full report saved to: ./wol-report-{{ ansible_date_time.date }}.txt"
+        msg: "Full report saved to: ./wol-multi-report-{{ ansible_date_time.date }}.txt"
