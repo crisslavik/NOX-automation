@@ -118,8 +118,12 @@
         gpgcheck: yes
         gpgkey: https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/D42D0685.pub
 
-    - name: Clean and update dnf cache
-      ansible.builtin.command: dnf clean all && dnf makecache
+    - name: Clean dnf cache
+      ansible.builtin.command: dnf clean all
+      changed_when: true
+
+    - name: Update dnf cache
+      ansible.builtin.command: dnf makecache
       changed_when: true
 
     # ====== INSTALL NVIDIA DRIVER ======
