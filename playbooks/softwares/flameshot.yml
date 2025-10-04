@@ -20,10 +20,10 @@
 
     - name: Clean old configuration from existing users
       ansible.builtin.shell: |
-        for home_dir in /home/*; do
-          if [ -d "$home_dir" ]; then
-            rm -rf "$home_dir/.config/flameshot"
-            rm -f "$home_dir/.local/share/applications/flameshot*.desktop"
+        for user_dir in /home/ad.noxvfx.com/*; do
+          if [ -d "$user_dir" ]; then
+            rm -rf "$user_dir/.config/flameshot"
+            rm -f "$user_dir/.local/share/applications/flameshot*.desktop"
           fi
         done
       ignore_errors: yes
@@ -81,7 +81,7 @@
           contrastOpacity=188
           saveAfterCopy=true
           saveAsFileExtension=jpg
-          savePath=/home/$USER/Pictures/Screenshots
+          savePath=$HOME/Pictures/Screenshots
           savePathFixed=false
           startupLaunch=true
           useJpgForClipboard=true
@@ -112,20 +112,22 @@
         state: directory
         mode: '0755'
 
-    # ====== APPLY TO EXISTING USERS ======
-    - name: Apply configuration to existing users
+    # ====== APPLY TO EXISTING AD USERS ======
+    - name: Apply configuration to existing AD users
       ansible.builtin.shell: |
-        for home_dir in /home/*; do
-          if [ -d "$home_dir" ]; then
-            user=$(basename "$home_dir")
-            mkdir -p "$home_dir/.config/flameshot"
+        # Process AD users in /home/ad.noxvfx.com/username
+        for user_dir in /home/ad.noxvfx.com/*; do
+          if [ -d "$user_dir" ]; then
+            user=$(basename "$user_dir")
             
-            cat > "$home_dir/.config/flameshot/flameshot.ini" << EOF
+            mkdir -p "$user_dir/.config/flameshot"
+            
+            cat > "$user_dir/.config/flameshot/flameshot.ini" << 'EOF'
         [General]
         contrastOpacity=188
         saveAfterCopy=true
         saveAsFileExtension=jpg
-        savePath=$home_dir/Pictures/Screenshots
+        savePath=$HOME/Pictures/Screenshots
         savePathFixed=false
         startupLaunch=true
         useJpgForClipboard=true
@@ -149,13 +151,13 @@
         TYPE_UNDO=Ctrl+Z
         EOF
             
-            mkdir -p "$home_dir/Pictures/Screenshots/$(date +%Y-%m-%d)"
-            chown -R "$user:$user" "$home_dir/.config/flameshot" "$home_dir/Pictures/Screenshots" 2>/dev/null || true
+            mkdir -p "$user_dir/Pictures/Screenshots/$(date +%Y-%m-%d)"
+            chown -R "$user:" "$user_dir/.config/flameshot" "$user_dir/Pictures/Screenshots" 2>/dev/null || true
           fi
         done
       ignore_errors: yes
 
-    # ====== KEYBOARD SHORTCUTS (X11 and Wayland) ======
+    # ====== KEYBOARD SHORTCUTS ======
     - name: Create keyboard shortcuts configuration script
       ansible.builtin.copy:
         content: |
@@ -167,8 +169,11 @@
                   export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
               fi
               
+              # Only disable the Print Screen key binding (not all screenshot shortcuts)
               gsettings set org.gnome.shell.keybindings screenshot '[]' 2>/dev/null || true
+              gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot '[]' 2>/dev/null || true
               
+              # Get existing custom keybindings and preserve all non-flameshot ones
               existing=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null | tr -d "[]'" | tr ',' '\n')
               new_bindings="['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/'"
               for binding in $existing; do
@@ -178,6 +183,7 @@
               done
               new_bindings="$new_bindings]"
               
+              # Set Flameshot custom shortcut for Print Screen only
               gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$new_bindings" 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ name 'Flameshot Screenshot' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ command '/usr/local/bin/flameshot gui' 2>/dev/null || true
@@ -217,4 +223,12 @@
 
     - name: Display completion message
       ansible.builtin.debug:
-        msg: "Flameshot installed. Logout/login required."
+        msg: |
+          📸 Flameshot Installation Complete!
+          
+          ✅ Installed via Flatpak
+          ✅ Configured for AD users (/home/ad.noxvfx.com/)
+          ✅ Print Screen key mapped to Flameshot
+          ✅ Screenshots saved to: ~/Pictures/Screenshots/
+          
+          ⚠️ Users may need to logout/login for shortcuts to take effect
