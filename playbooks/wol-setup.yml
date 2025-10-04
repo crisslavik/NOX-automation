@@ -16,6 +16,19 @@
         msg: "Failed to install ethtool on {{ inventory_hostname }}"
       when: ethtool_install.failed | default(false)
 
+    - name: Stop and disable old wol.service if exists
+      systemd:
+        name: wol.service
+        state: stopped
+        enabled: no
+      failed_when: false
+      ignore_errors: yes
+
+    - name: Remove old wol.service file
+      file:
+        path: /etc/systemd/system/wol.service
+        state: absent
+
     - name: Get all network interfaces (excluding loopback)
       shell: "ip -o link show | awk -F': ' '!/lo:/ {print $2}' | sed 's/@.*//' | sort -u"
       register: all_interfaces
@@ -56,7 +69,7 @@
           [Service]
           Type=oneshot
           {% for iface in wol_interfaces_with_mac | default([]) %}
-          ExecStart=/usr/sbin/ethtool -s {{ iface.name }} wol g
+          ExecStart=-/usr/sbin/ethtool -s {{ iface.name }} wol g
           {% endfor %}
 
           [Install]
@@ -65,14 +78,18 @@
       when: wol_interfaces_with_mac | default([]) | length > 0
       register: service_created
 
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
     - name: Enable and start WoL service
       systemd:
         name: wol-all.service
         enabled: yes
         state: started
-        daemon_reload: yes
       when: wol_interfaces_with_mac | default([]) | length > 0
       register: service_enabled
+      failed_when: false
 
     - name: Verify WoL is enabled on all interfaces
       shell: "ethtool {{ item.name }} | grep 'Wake-on:' | grep -v 'Supports'"
@@ -102,7 +119,7 @@
   tasks:
     - name: Collect all results
       set_fact:
-        all_results: "{{ groups['all'] | map('extract', hostvars, 'wol_summary') | list }}"
+        all_results: "{{ groups['all'] | map('extract', hostvars, 'wol_summary') | select('defined') | list }}"
 
     - name: Display summary header
       debug:
