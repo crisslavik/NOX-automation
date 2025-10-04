@@ -124,15 +124,41 @@
       ansible.builtin.firewalld:
         port: 17000/tcp
         permanent: yes
+        immediate: yes
         state: enabled
       tags: firewall
 
-    - name: Reload firewall to apply changes
-      ansible.builtin.command:
-        cmd: firewall-cmd --reload
-      tags: firewall
+    # STEP 5: Fix systemd service file (remove -daemon flag)
+    - name: Fix Launcher service to remove -daemon flag
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/system/deadline10launcher.service
+        regexp: '^ExecStart='
+        line: 'ExecStart=/opt/Thinkbox/Deadline10/bin/deadlinelauncher -nogui'
+      tags: fix_service
 
-    # STEP 5: Configure Render User
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      tags: fix_service
+
+    - name: Restart Deadline Launcher service
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        state: restarted
+      tags: fix_service
+
+    # STEP 6: Fix Deadline data directory permissions
+    - name: Ensure Deadline data directory has correct permissions
+      ansible.builtin.file:
+        path: /var/lib/Thinkbox/Deadline10
+        state: directory
+        owner: "{{ render_user }}"
+        group: "domain users"
+        mode: '0755'
+        recurse: yes
+      tags: permissions
+
+    # STEP 7: Configure Render User
     - name: Check if render user home directory exists
       ansible.builtin.stat:
         path: "{{ ad_home_base }}/{{ render_user }}"
@@ -197,7 +223,7 @@
         force: yes
       tags: configure_render_user
 
-    # STEP 6: Configure for Existing AD Users (Artists)
+    # STEP 8: Configure for Existing AD Users (Artists)
     - name: Find all existing AD user home directories
       ansible.builtin.find:
         paths: "{{ ad_home_base }}"
@@ -239,7 +265,7 @@
       loop: "{{ ad_user_homes.files }}"
       tags: configure_users
 
-    # STEP 7: Configure for Future AD Users (/etc/skel/)
+    # STEP 9: Configure for Future AD Users (/etc/skel/)
     - name: Create .deadline directory in /etc/skel
       ansible.builtin.file:
         path: /etc/skel/.deadline
@@ -261,14 +287,13 @@
           Enabled=True
       tags: configure_skel
 
-    # STEP 8: Configure Desktop Shortcuts (System-wide and working)
+    # STEP 10: Configure Desktop Shortcuts (System-wide)
     - name: Copy Deadline desktop files to system applications
       ansible.builtin.copy:
         src: "{{ deadline_install_path }}/{{ item }}"
         dest: /usr/share/applications/{{ item }}
         mode: '0644'
         remote_src: yes
-      become: yes
       loop:
         - deadlinelauncher10.desktop
         - deadlinemonitor10.desktop
@@ -280,7 +305,6 @@
         path: /usr/share/applications/deadlinemonitor10.desktop
         regexp: '^Exec='
         line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlinemonitor'
-      become: yes
       tags: desktop_shortcuts
 
     - name: Fix Worker desktop file to launch directly
@@ -288,10 +312,9 @@
         path: /usr/share/applications/deadlineworker10.desktop
         regexp: '^Exec='
         line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlineslave'
-      become: yes
       tags: desktop_shortcuts
 
-    # STEP 9: Configure Deadline Environment
+    # STEP 11: Configure Deadline Environment
     - name: Add Deadline to system PATH
       ansible.builtin.copy:
         dest: /etc/profile.d/deadline.sh
@@ -301,6 +324,22 @@
           export PATH=$PATH:{{ deadline_install_path }}/bin
       tags: environment
 
+    # STEP 12: Configure sudoers for artist control
+    - name: Allow domain users to control Deadline services
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/99-deadline-control
+        mode: '0440'
+        content: |
+          # Allow AD domain users to control Deadline services
+          %domain\ users ALL=(ALL) NOPASSWD: /usr/bin/systemctl start deadline10launcher.service
+          %domain\ users ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop deadline10launcher.service
+          %domain\ users ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart deadline10launcher.service
+          %domain\ users ALL=(ALL) NOPASSWD: /usr/bin/killall deadlineworker
+          %domain\ users ALL=(ALL) NOPASSWD: /usr/bin/killall deadlineslave
+        validate: '/usr/sbin/visudo -cf %s'
+      tags: sudoers
+
+    # STEP 13: Verification
     - name: Verify Deadline installation
       ansible.builtin.command: "{{ deadline_install_path }}/bin/deadlinecommand --version"
       register: deadline_version_check
@@ -312,7 +351,7 @@
         msg: "Deadline installed successfully: {{ deadline_version_check.stdout }}"
       tags: verify
 
-    # STEP 10: Cleanup
+    # STEP 14: Cleanup
     - name: Remove temporary installer files
       ansible.builtin.file:
         path: /tmp/deadline_install
@@ -332,23 +371,27 @@
           
           FEATURES:
           - Launcher daemon auto-starts on boot as 'render' user
-          - Worker does NOT auto-start (remotely controlled)
+          - Worker does NOT auto-start (remotely controlled via Monitor)
           - Remote Control: ENABLED (Monitor can start/stop workers)
           - Firewall: Port 17000 opened for remote control
           - Auto-upgrade: BLOCKED for security
+          - Desktop shortcuts: System-wide and functional
+          - Artist control: domain users can sudo stop/restart services
           
           USERS:
           - Configured for existing AD users in {{ ad_home_base }}
           - Configured for future users via /etc/skel
-          - Desktop shortcuts added (Launcher, Monitor, Worker)
+          - Desktop shortcuts work from Applications menu
           
           USAGE:
           - Open Deadline Monitor from Applications menu
           - Right-click workers in Monitor → Start Worker / Stop Worker
-          - Workers will render as 'render' user with access to shared storage
+          - Workers render as 'render' user with access to shared storage
+          - Artists can stop service: sudo systemctl stop deadline10launcher.service
+          - Artists can kill worker: sudo killall deadlineslave
           
-          NEXT STEPS:
-          - Test starting a worker from Deadline Monitor
-          - Submit a test job to verify rendering works
-          - Configure worker groups and pools as needed
+          POST-INSTALL REQUIRED:
+          - In Deadline Monitor: Tools → Configure Repository Options → Remote Control tab
+          - Select "Disable the allow list. Allow all remote commands"
+          - Click OK and wait 10 minutes for settings to propagate
       tags: always
