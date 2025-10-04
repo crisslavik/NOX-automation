@@ -17,7 +17,7 @@
       when: ethtool_install.failed | default(false)
 
     - name: Get active network interface (state UP)
-      shell: ip -o link show | awk -F': ' '/state UP/ && !/lo:/ {print $2; exit}'
+      shell: "ip -o link show | awk -F': ' '/state UP/ && !/lo:/ {print $2; exit}'"
       register: active_interface
       changed_when: false
       failed_when: active_interface.stdout == ""
@@ -28,7 +28,7 @@
         wol_status: "unknown"
 
     - name: Check if interface supports WoL
-      shell: ethtool {{ wol_interface }} | grep "Supports Wake-on"
+      shell: "ethtool {{ wol_interface }} | grep 'Supports Wake-on'"
       register: wol_check
       failed_when: false
       changed_when: false
@@ -39,7 +39,7 @@
         wol_status: "{{ 'supported' if 'g' in wol_check.stdout else 'not_supported' }}"
 
     - name: Get MAC address
-      shell: ip link show {{ wol_interface }} | awk '/link\/ether/ {print $2}'
+      shell: "ip link show {{ wol_interface }} | awk '/link\\/ether/ {print $2}'"
       register: mac_address
       changed_when: false
       when: wol_supported | bool
@@ -72,7 +72,7 @@
       register: service_enabled
 
     - name: Verify WoL is enabled
-      shell: ethtool {{ wol_interface }} | grep "Wake-on:" | awk '{print $2}'
+      shell: "ethtool {{ wol_interface }} | grep 'Wake-on:' | awk '{print $2}'"
       register: wol_verify
       changed_when: false
       when: wol_supported | bool
