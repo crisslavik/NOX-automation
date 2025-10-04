@@ -1,14 +1,12 @@
 ---
-# NVIDIA Official Repository - Fix Login Loop & Black Screen
-# Uses NVIDIA's proprietary driver instead of AlmaLinux's open-source version
-- name: NVIDIA Official Driver Installation (Login Loop Fix)
+# NVIDIA Official Repository - Complete Installation & Verification
+- name: NVIDIA Official Driver Installation with Verification
   hosts: all
   become: yes
   gather_facts: yes
   
   vars:
     install_cuda: true
-    # Driver version options: latest, 550, 535, latest-dkms
     nvidia_driver_stream: "latest"
     
   tasks:
@@ -16,21 +14,8 @@
       ansible.builtin.debug:
         msg: |
           🔧 NVIDIA Official Repository Installation
-          
           Target: {{ inventory_hostname }}
-          
-          🆕 WHAT'S DIFFERENT:
-          • Using NVIDIA's official proprietary driver
-          • NOT using AlmaLinux's open-source driver
-          • Direct from NVIDIA repository
-          
-          ✅ All our fixes included:
-          • Wayland disabled (X11 forced)
-          • GNOME session packages
-          • Nouveau completely blacklisted
-          • Proper kernel module building
-          
-          This should fix login loop and black screen!
+          Using NVIDIA's official proprietary driver
 
     - name: Check for NVIDIA GPU
       ansible.builtin.shell: lspci | grep -i nvidia
@@ -43,22 +28,13 @@
         msg: "❌ No NVIDIA hardware detected"
       when: nvidia_hardware.stdout == ""
 
-    - name: Display detected GPU
-      ansible.builtin.debug:
-        msg: "GPU detected: {{ nvidia_hardware.stdout }}"
-
-    # ====== CLEAN UP ANY EXISTING NVIDIA PACKAGES ======
-    - name: Remove any existing NVIDIA packages (clean slate)
+    # ====== CLEAN UP ======
+    - name: Remove any existing NVIDIA packages
       ansible.builtin.dnf:
         name:
           - "nvidia*"
           - "cuda*"
         state: absent
-      ignore_errors: yes
-
-    - name: Remove old kernel modules
-      ansible.builtin.command: dracut --force --regenerate-all
-      changed_when: true
       ignore_errors: yes
 
     # ====== REPOSITORY SETUP ======
@@ -81,11 +57,7 @@
       register: kernel_version
       changed_when: false
 
-    - name: Display kernel version
-      ansible.builtin.debug:
-        msg: "Running kernel: {{ kernel_version.stdout }}"
-
-    # ====== COMPREHENSIVE NOUVEAU BLACKLISTING ======
+    # ====== BLACKLIST NOUVEAU ======
     - name: Blacklist nouveau in modprobe.d
       ansible.builtin.copy:
         content: |
@@ -102,11 +74,6 @@
         dest: /etc/dracut.conf.d/nvidia.conf
         mode: '0644'
 
-    - name: Check if GRUB uses BIOS or UEFI
-      ansible.builtin.stat:
-        path: /sys/firmware/efi
-      register: efi_check
-
     - name: Add nouveau blacklist to GRUB cmdline
       ansible.builtin.lineinfile:
         path: /etc/default/grub
@@ -115,21 +82,16 @@
         backrefs: yes
       register: grub_config
 
-    - name: Update GRUB config (BIOS)
+    - name: Update GRUB configuration
       ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
-      when: not efi_check.stat.exists
-      changed_when: true
-
-    - name: Update GRUB config (UEFI)
-      ansible.builtin.command: grub2-mkconfig -o /boot/efi/EFI/almalinux/grub.cfg
-      when: efi_check.stat.exists
+      when: grub_config.changed
       changed_when: true
 
     - name: Regenerate initramfs without nouveau
       ansible.builtin.command: dracut --force --omit-drivers nouveau
       changed_when: true
 
-    # ====== INSTALL KERNEL DEPENDENCIES ======
+    # ====== INSTALL DEPENDENCIES ======
     - name: Install kernel development packages
       ansible.builtin.dnf:
         name:
@@ -147,7 +109,7 @@
         state: present
 
     # ====== ADD NVIDIA OFFICIAL REPOSITORY ======
-    - name: Add NVIDIA CUDA/Driver repository for RHEL 9
+    - name: Add NVIDIA CUDA/Driver repository
       ansible.builtin.yum_repository:
         name: cuda-rhel9-x86_64
         description: NVIDIA CUDA Repository for RHEL 9
@@ -156,24 +118,11 @@
         gpgcheck: yes
         gpgkey: https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/D42D0685.pub
 
-    - name: Clean dnf cache
-      ansible.builtin.command: dnf clean all
+    - name: Clean and update dnf cache
+      ansible.builtin.command: dnf clean all && dnf makecache
       changed_when: true
 
-    - name: Make dnf cache
-      ansible.builtin.command: dnf makecache
-      changed_when: true
-
-    # ====== INSTALL NVIDIA DRIVER (OFFICIAL NVIDIA METHOD) ======
-    - name: Check available NVIDIA driver module streams
-      ansible.builtin.command: dnf module list nvidia-driver
-      register: available_streams
-      changed_when: false
-
-    - name: Display available driver streams
-      ansible.builtin.debug:
-        msg: "{{ available_streams.stdout_lines }}"
-
+    # ====== INSTALL NVIDIA DRIVER ======
     - name: Install NVIDIA driver via module stream
       ansible.builtin.shell: |
         dnf module reset nvidia-driver -y
@@ -181,43 +130,21 @@
       register: nvidia_module_install
       changed_when: true
 
-    - name: Display installation output
+    - name: Display installation result
       ansible.builtin.debug:
         msg: "{{ nvidia_module_install.stdout_lines }}"
 
-    # ====== VERIFY NVIDIA PACKAGES INSTALLED ======
-    - name: List installed NVIDIA packages
-      ansible.builtin.command: rpm -qa | grep nvidia
-      register: nvidia_packages
-      changed_when: false
-
-    - name: Display installed packages
-      ansible.builtin.debug:
-        msg: "{{ nvidia_packages.stdout_lines }}"
-
-    # ====== INSTALL CUDA TOOLKIT (OPTIONAL) ======
+    # ====== INSTALL CUDA (OPTIONAL) ======
     - name: Install CUDA toolkit
       ansible.builtin.dnf:
-        name:
-          - cuda-toolkit
+        name: cuda-toolkit
         state: present
       when: install_cuda
       ignore_errors: yes
 
-    # ====== BUILD/LOAD KERNEL MODULES ======
-    - name: Check if DKMS modules need building
-      ansible.builtin.command: dkms status
-      register: dkms_status
-      changed_when: false
-      failed_when: false
-
-    - name: Display DKMS status
-      ansible.builtin.debug:
-        msg: "{{ dkms_status.stdout_lines }}"
-
-    - name: Build DKMS modules if needed
+    # ====== BUILD KERNEL MODULES ======
+    - name: Build DKMS modules
       ansible.builtin.command: dkms autoinstall -k {{ kernel_version.stdout }}
-      when: "'nvidia' in dkms_status.stdout"
       register: dkms_build
       changed_when: true
       failed_when: false
@@ -226,88 +153,53 @@
       ansible.builtin.command: dracut --force
       changed_when: true
 
-    # ====== FIX GDM/WAYLAND (CRITICAL FOR LOGIN LOOP) ======
-    - name: Check if GDM is installed
-      ansible.builtin.command: rpm -q gdm
-      register: gdm_check
-      failed_when: false
-      changed_when: false
-
+    # ====== FIX GDM/WAYLAND ======
     - name: Create GDM config directory
       ansible.builtin.file:
         path: /etc/gdm
         state: directory
         mode: '0755'
 
-    - name: Create GDM custom.conf if it doesn't exist
+    - name: Create GDM custom.conf
       ansible.builtin.copy:
         content: |
           [daemon]
           WaylandEnable=false
-          
-          [security]
-          
-          [xdmcp]
-          
-          [chooser]
-          
-          [debug]
         dest: /etc/gdm/custom.conf
         mode: '0644'
-        force: no
 
-    - name: Disable Wayland in GDM (FORCE X11)
-      ansible.builtin.lineinfile:
-        path: /etc/gdm/custom.conf
-        regexp: '^#?WaylandEnable='
-        line: 'WaylandEnable=false'
-        insertafter: '^\[daemon\]'
-        state: present
-
-    - name: Verify GDM configuration
-      ansible.builtin.command: cat /etc/gdm/custom.conf
-      register: gdm_config_check
-      changed_when: false
-
-    - name: Display GDM configuration
-      ansible.builtin.debug:
-        msg: "{{ gdm_config_check.stdout_lines }}"
-
-    # ====== INSTALL COMPLETE GNOME PACKAGES (PREVENT SESSION ISSUES) ======
-    - name: Install full GNOME desktop environment
+    # ====== INSTALL GNOME PACKAGES ======
+    - name: Install GNOME desktop packages
       ansible.builtin.dnf:
         name:
           - gdm
           - gnome-shell
           - gnome-session
           - gnome-session-xsession
-          - gnome-session-wayland-session
           - gnome-terminal
-          - gnome-control-center
-          - gnome-classic-session
         state: present
 
-    # ====== X11 DEPENDENCIES ======
+    # ====== X11 PACKAGES ======
     - name: Install X11 packages
       ansible.builtin.dnf:
         name:
           - xorg-x11-server-Xorg
           - xorg-x11-xinit
           - xorg-x11-utils
-          - xorg-x11-xauth
-          - xorg-x11-drv-nvidia
           - mesa-libGL
           - mesa-libEGL
-          - mesa-dri-drivers
           - libglvnd
           - libglvnd-glx
           - libglvnd-egl
-          - libglvnd-opengl
-          - vulkan
         state: present
-      ignore_errors: yes
 
     # ====== NVIDIA CONFIGURATION ======
+    - name: Create Xorg NVIDIA config directory
+      ansible.builtin.file:
+        path: /etc/X11/xorg.conf.d
+        state: directory
+        mode: '0755'
+
     - name: Create NVIDIA Xorg configuration
       ansible.builtin.copy:
         content: |
@@ -316,127 +208,69 @@
               MatchDriver "nvidia-drm"
               Driver "nvidia"
               Option "AllowEmptyInitialConfiguration"
-              Option "PrimaryGPU" "yes"
               ModulePath "/usr/lib64/nvidia/xorg"
               ModulePath "/usr/lib64/xorg/modules"
           EndSection
         dest: /etc/X11/xorg.conf.d/10-nvidia.conf
         mode: '0644'
 
-    - name: Configure NVIDIA environment variables
+    - name: Configure NVIDIA environment
       ansible.builtin.copy:
         content: |
-          # NVIDIA Driver Configuration
           export __GLX_VENDOR_LIBRARY_NAME=nvidia
-          export __GL_SHADER_DISK_CACHE_PATH=/tmp
-          export __GL_THREADED_OPTIMIZATIONS=1
-          
-          # CUDA Configuration
           export CUDA_HOME=/usr/local/cuda
           export PATH=$CUDA_HOME/bin:$PATH
           export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
         dest: /etc/profile.d/nvidia.sh
         mode: '0755'
 
-    - name: Enable nvidia-persistenced service
+    - name: Enable nvidia-persistenced
       ansible.builtin.systemd:
         name: nvidia-persistenced
         enabled: yes
       ignore_errors: yes
 
-    # ====== FIX PERMISSIONS (PREVENT LOGIN ISSUES) ======
-    - name: Ensure /tmp has correct permissions
+    # ====== FIX PERMISSIONS ======
+    - name: Ensure /tmp permissions
       ansible.builtin.file:
         path: /tmp
         mode: '1777'
         state: directory
 
-    - name: Create nvidia device nodes directory
-      ansible.builtin.file:
-        path: /dev/nvidia
-        state: directory
-        mode: '0755'
-      ignore_errors: yes
-
     # ====== SET GRAPHICAL TARGET ======
-    - name: Set default target to graphical
+    - name: Set graphical target
       ansible.builtin.command: systemctl set-default graphical.target
       changed_when: true
 
-    - name: Enable GDM service
+    - name: Enable GDM
       ansible.builtin.systemd:
         name: gdm
         enabled: yes
 
-    # ====== FINAL VERIFICATION BEFORE REBOOT ======
-    - name: Verify nouveau is NOT loaded
-      ansible.builtin.command: lsmod | grep nouveau
-      register: nouveau_check
-      failed_when: nouveau_check.rc == 0
-      changed_when: false
-      ignore_errors: yes
-
-    - name: Display nouveau check
-      ansible.builtin.debug:
-        msg: "✅ Nouveau is NOT loaded (good!)"
-      when: nouveau_check.rc != 0
-
-    - name: Check NVIDIA packages installed
-      ansible.builtin.command: rpm -qa | grep nvidia | wc -l
-      register: nvidia_count
-      changed_when: false
-
-    - name: Display package count
-      ansible.builtin.debug:
-        msg: "NVIDIA packages installed: {{ nvidia_count.stdout }}"
-
-    # ====== FINAL STATUS ======
-    - name: Display pre-reboot summary
+    # ====== PRE-REBOOT STATUS ======
+    - name: Display pre-reboot status
       ansible.builtin.debug:
         msg: |
-          ✅ NVIDIA Official Driver Installation Complete
+          ✅ Installation complete - rebooting now
           
-          📦 What was installed:
-          • NVIDIA proprietary driver (from NVIDIA official repo)
-          • Complete GNOME desktop environment
-          • X11 packages and dependencies
-          • CUDA toolkit (if enabled)
-          
-          🔧 Fixes applied:
-          • Nouveau blacklisted in 3 locations
-          • Wayland DISABLED (X11 forced)
-          • GDM configured for X11 only
-          • NVIDIA Xorg config created
-          • All kernel modules configured
-          
-          🎯 This should fix:
-          • Login loop issues
-          • Black screen after login
-          • Session registration failures
-          
-          🔄 Rebooting now...
+          After reboot, verification will run automatically
 
-    - name: Reboot system to activate NVIDIA drivers
+    - name: Reboot system
       ansible.builtin.reboot:
         reboot_timeout: 300
-        msg: "Rebooting to activate NVIDIA official drivers"
+        msg: "Rebooting to activate NVIDIA drivers"
 
     # ====== POST-REBOOT VERIFICATION ======
-    - name: Wait for system to come back online
+    - name: Wait for system to come back
       ansible.builtin.wait_for_connection:
         delay: 30
         timeout: 300
 
-    - name: Check if NVIDIA kernel modules loaded
+    - name: Check NVIDIA modules loaded
       ansible.builtin.shell: lsmod | grep nvidia
       register: nvidia_modules
       changed_when: false
       failed_when: false
-
-    - name: Display loaded modules
-      ansible.builtin.debug:
-        msg: "{{ nvidia_modules.stdout_lines }}"
-      when: nvidia_modules.rc == 0
 
     - name: Test nvidia-smi
       ansible.builtin.command: nvidia-smi
@@ -444,50 +278,66 @@
       changed_when: false
       failed_when: false
 
-    - name: Display nvidia-smi output
-      ansible.builtin.debug:
-        msg: "{{ nvidia_smi.stdout_lines }}"
-      when: nvidia_smi.rc == 0
-
     - name: Check GDM status
-      ansible.builtin.command: systemctl status gdm
+      ansible.builtin.systemd:
+        name: gdm
       register: gdm_status
-      changed_when: false
-      failed_when: false
 
-    - name: Check if X11 is being used
-      ansible.builtin.shell: echo $XDG_SESSION_TYPE
-      register: session_type
-      changed_when: false
-      become: no
-      failed_when: false
-
-    - name: Final success message
+    # ====== FINAL REPORT ======
+    - name: Display verification results
       ansible.builtin.debug:
         msg: |
-          🎉 INSTALLATION VERIFICATION
           
-          ✅ System rebooted successfully
+          ╔════════════════════════════════════════════════╗
+          ║     NVIDIA INSTALLATION VERIFICATION          ║
+          ╚════════════════════════════════════════════════╝
+          
+          Host: {{ inventory_hostname }}
+          
           {% if nvidia_modules.rc == 0 %}
-          ✅ NVIDIA modules loaded: {{ nvidia_modules.stdout_lines | length }} modules
+          ✅ NVIDIA Modules: LOADED
+          {{ nvidia_modules.stdout }}
           {% else %}
-          ❌ NVIDIA modules NOT loaded - check logs
+          ❌ NVIDIA Modules: NOT LOADED
           {% endif %}
           
           {% if nvidia_smi.rc == 0 %}
-          ✅ nvidia-smi is working!
+          ✅ nvidia-smi: WORKING
+          
+          {{ nvidia_smi.stdout }}
           {% else %}
-          ❌ nvidia-smi failed - driver may not be loaded
+          ❌ nvidia-smi: FAILED
+          Error: {{ nvidia_smi.stderr }}
           {% endif %}
           
-          📋 Next steps:
-          1. Try logging in via GUI
-          2. If login loop: Check journalctl -u gdm
-          3. If black screen: Check /var/log/Xorg.0.log
-          4. Verify with: nvidia-smi
+          {% if gdm_status.status.ActiveState == "active" %}
+          ✅ GDM: RUNNING
+          {% else %}
+          ❌ GDM: {{ gdm_status.status.ActiveState }}
+          {% endif %}
           
-          🔍 Troubleshooting commands:
+          ╔════════════════════════════════════════════════╗
+          {% if nvidia_smi.rc == 0 %}
+          ║  🎉 SUCCESS! GPU is ready                     ║
+          {% else %}
+          ║  ❌ FAILED - Check logs above                 ║
+          {% endif %}
+          ╚════════════════════════════════════════════════╝
+          
+          Next: Try logging in via GUI
+
+    - name: Mark verification complete
+      ansible.builtin.set_fact:
+        nvidia_verified: "{{ nvidia_smi.rc == 0 }}"
+
+    - name: Fail if nvidia-smi doesn't work
+      ansible.builtin.fail:
+        msg: |
+          ❌ nvidia-smi verification FAILED
+          
+          Troubleshooting commands:
           • lsmod | grep nvidia
-          • systemctl status gdm
-          • cat /var/log/Xorg.0.log | grep -i error
-          • journalctl -u gdm -n 50
+          • dmesg | grep -i nvidia
+          • journalctl -xe | grep nvidia
+          • cat /var/log/Xorg.0.log
+      when: nvidia_smi.rc != 0
