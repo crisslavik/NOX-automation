@@ -1,0 +1,154 @@
+---
+- name: Enable Wake-on-LAN on AlmaLinux hosts
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Install ethtool package
+      dnf:
+        name: ethtool
+        state: present
+      register: ethtool_install
+      failed_when: false
+
+    - name: Check ethtool installation
+      fail:
+        msg: "Failed to install ethtool on {{ inventory_hostname }}"
+      when: ethtool_install.failed | default(false)
+
+    - name: Get active network interface (state UP)
+      shell: ip -o link show | awk -F': ' '/state UP/ && !/lo:/ {print $2; exit}'
+      register: active_interface
+      changed_when: false
+      failed_when: active_interface.stdout == ""
+
+    - name: Set interface fact
+      set_fact:
+        wol_interface: "{{ active_interface.stdout }}"
+        wol_status: "unknown"
+
+    - name: Check if interface supports WoL
+      shell: ethtool {{ wol_interface }} | grep "Supports Wake-on"
+      register: wol_check
+      failed_when: false
+      changed_when: false
+
+    - name: Set WoL support status
+      set_fact:
+        wol_supported: "{{ 'g' in wol_check.stdout }}"
+        wol_status: "{{ 'supported' if 'g' in wol_check.stdout else 'not_supported' }}"
+
+    - name: Get MAC address
+      shell: ip link show {{ wol_interface }} | awk '/link\/ether/ {print $2}'
+      register: mac_address
+      changed_when: false
+      when: wol_supported | bool
+
+    - name: Create WoL systemd service
+      copy:
+        dest: /etc/systemd/system/wol.service
+        content: |
+          [Unit]
+          Description=Enable Wake-on-LAN on {{ wol_interface }}
+          After=network.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/sbin/ethtool -s {{ wol_interface }} wol g
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      when: wol_supported | bool
+      register: service_created
+
+    - name: Enable and start WoL service
+      systemd:
+        name: wol.service
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      when: wol_supported | bool
+      register: service_enabled
+
+    - name: Verify WoL is enabled
+      shell: ethtool {{ wol_interface }} | grep "Wake-on:" | awk '{print $2}'
+      register: wol_verify
+      changed_when: false
+      when: wol_supported | bool
+
+    - name: Update status with result
+      set_fact:
+        wol_status: "{{ 'enabled' if (wol_verify.stdout | default('') == 'g') else 'failed' }}"
+      when: wol_supported | bool
+
+    - name: Set summary facts
+      set_fact:
+        wol_summary:
+          hostname: "{{ inventory_hostname }}"
+          interface: "{{ wol_interface }}"
+          mac_address: "{{ mac_address.stdout | default('N/A') }}"
+          supported: "{{ wol_supported | default(false) }}"
+          status: "{{ wol_status }}"
+          ip_address: "{{ ansible_default_ipv4.address | default('N/A') }}"
+
+    - name: Add to summary list
+      set_fact:
+        wol_results: "{{ wol_results | default([]) + [wol_summary] }}"
+
+- name: Display Wake-on-LAN Summary Report
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Collect all results
+      set_fact:
+        all_results: "{{ groups['all'] | map('extract', hostvars, 'wol_summary') | list }}"
+
+    - name: Display summary header
+      debug:
+        msg:
+          - "================================================"
+          - "       Wake-on-LAN Configuration Summary"
+          - "================================================"
+
+    - name: Display results for each host
+      debug:
+        msg:
+          - "Host: {{ item.hostname }}"
+          - "  Interface: {{ item.interface }}"
+          - "  MAC Address: {{ item.mac_address }}"
+          - "  IP Address: {{ item.ip_address }}"
+          - "  WoL Supported: {{ 'Yes' if item.supported else 'No' }}"
+          - "  Status: {{ item.status | upper }}"
+          - "---"
+      loop: "{{ all_results }}"
+
+    - name: Create summary report file
+      copy:
+        content: |
+          Wake-on-LAN Configuration Report
+          Generated: {{ ansible_date_time.iso8601 }}
+          ================================================================================
+          
+          {% for host in all_results %}
+          Hostname: {{ host.hostname }}
+            Interface: {{ host.interface }}
+            MAC Address: {{ host.mac_address }}
+            IP Address: {{ host.ip_address }}
+            WoL Supported: {{ 'Yes' if host.supported else 'No' }}
+            Status: {{ host.status | upper }}
+          
+          {% endfor %}
+          ================================================================================
+          Summary:
+            Total Hosts: {{ all_results | length }}
+            Successfully Enabled: {{ all_results | selectattr('status', 'equalto', 'enabled') | list | length }}
+            Not Supported: {{ all_results | selectattr('status', 'equalto', 'not_supported') | list | length }}
+            Failed: {{ all_results | selectattr('status', 'equalto', 'failed') | list | length }}
+        dest: "./wol-report-{{ ansible_date_time.date }}.txt"
+      delegate_to: localhost
+      run_once: yes
+
+    - name: Display report location
+      debug:
+        msg: "Full report saved to: ./wol-report-{{ ansible_date_time.date }}.txt"
