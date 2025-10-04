@@ -169,12 +169,8 @@
           ================================================================================
           Overall Summary:
             Total Hosts: {{ all_results | length }}
-            Total Interfaces Configured: {{ all_results | sum(attribute='total_interfaces') }}
-            Total Successfully Enabled: {{ all_results | sum(attribute='enabled_count') }}
+            Total Interfaces Configured: {{ all_results | map(attribute='total_interfaces') | map('int') | sum }}
+            Total Successfully Enabled: {{ all_results | map(attribute='enabled_count') | map('int') | sum }}
         dest: "./wol-multi-report-{{ ansible_date_time.date }}.txt"
       delegate_to: localhost
       run_once: yes
-
-    - name: Display report location
-      debug:
-        msg: "Full report saved to: ./wol-multi-report-{{ ansible_date_time.date }}.txt"
