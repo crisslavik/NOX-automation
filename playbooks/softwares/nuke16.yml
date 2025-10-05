@@ -99,7 +99,7 @@
           export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
 
-    # Step 5: Create GNOME Desktop Icons in /etc/skel
+# Step 5: Create GNOME Desktop Icons in /etc/skel
     - name: Create .local/share/applications directory in /etc/skel
       file:
         path: /etc/skel/.local/share/applications
@@ -109,7 +109,7 @@
     - name: Create Nuke desktop entry in /etc/skel
       copy:
         dest: /etc/skel/.local/share/applications/nuke{{ nuke_version }}.desktop
-        mode: '0644'
+        mode: '0755'
         content: |
           [Desktop Entry]
           Version=1.0
@@ -125,7 +125,7 @@
     - name: Create NukeX desktop entry in /etc/skel
       copy:
         dest: /etc/skel/.local/share/applications/nukex{{ nuke_version }}.desktop
-        mode: '0644'
+        mode: '0755'
         content: |
           [Desktop Entry]
           Version=1.0
@@ -141,7 +141,7 @@
     - name: Create Nuke Studio desktop entry in /etc/skel
       copy:
         dest: /etc/skel/.local/share/applications/nukestudio{{ nuke_version }}.desktop
-        mode: '0644'
+        mode: '0755'
         content: |
           [Desktop Entry]
           Version=1.0
@@ -170,7 +170,7 @@
         src: /etc/skel/.local/share/applications/nuke{{ nuke_version }}.desktop
         dest: "{{ item.path }}/.local/share/applications/nuke{{ nuke_version }}.desktop"
         remote_src: yes
-        mode: '0644'
+        mode: '0755'
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
@@ -181,7 +181,7 @@
         src: /etc/skel/.local/share/applications/nukex{{ nuke_version }}.desktop
         dest: "{{ item.path }}/.local/share/applications/nukex{{ nuke_version }}.desktop"
         remote_src: yes
-        mode: '0644'
+        mode: '0755'
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
@@ -192,11 +192,18 @@
         src: /etc/skel/.local/share/applications/nukestudio{{ nuke_version }}.desktop
         dest: "{{ item.path }}/.local/share/applications/nukestudio{{ nuke_version }}.desktop"
         remote_src: yes
-        mode: '0644'
+        mode: '0755'
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files is defined and ad_users.files | length > 0
+
+    - name: Update desktop database for existing users
+      command: update-desktop-database {{ item.path }}/.local/share/applications
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+      changed_when: false
+      failed_when: false
 
     # Step 7: Verification
     - name: Verify Nuke installation
