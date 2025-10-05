@@ -74,7 +74,7 @@
       changed_when: true
       ignore_errors: yes
 
-    - name: 8. Create RV environment setup script in /etc/profile.d/
+- name: 8. Create RV environment setup script in /etc/profile.d/
       copy:
         dest: /etc/profile.d/rv.sh
         mode: '0755'
@@ -83,6 +83,7 @@
           # Autodesk RV Environment Setup
           
           export RV_HOME="{{ rv_final_path }}"
+          export RV_SUPPORT_PATH=/mnt/Library/pipeline/rv_support_path
           # CRITICAL: Add the RV bundled 'lib' folder to LD_LIBRARY_PATH
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
           export PATH=$RV_HOME/bin:$PATH
