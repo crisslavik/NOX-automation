@@ -32,20 +32,28 @@
           - libtiff-devel
         state: present
 
-    - name: 2. Copy RV zip file to target machine
+    - name: 2. Create Autodesk parent directory
+      file:
+        path: "{{ rv_extract_parent_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: 3. Copy RV zip file to target machine
       copy:
         src: "{{ rv_source_zip }}"
         dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         mode: '0644'
 
-    - name: 3. Extract RV zip file to parent directory (avoiding double '/opt/RV/RV')
-      # Extracts to /opt. The internal 'RV' folder inside the zip will result in /opt/RV.
+    - name: 4. Extract RV zip file to parent directory (avoiding double '/opt/RV/RV')
+      # Extracts to /opt/Autodesk. The internal 'RV' folder inside the zip will result in /opt/Autodesk/RV.
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         dest: "{{ rv_extract_parent_path }}"
         remote_src: yes
         
-    - name: 4. Set ownership and proper permissions on RV directory
+    - name: 5. Set ownership and proper permissions on RV directory
       file:
         path: "{{ rv_final_path }}"
         state: directory
@@ -54,21 +62,19 @@
         owner: root
         group: root
 
-    - name: 5. Ensure RV binaries are executable
+    - name: 6. Ensure RV binaries are executable
       file:
         path: "{{ rv_final_path }}/bin"
         state: directory
         recurse: yes
         mode: 'u=rwx,g=rx,o=rx'
 
-    - name: 6. Run RV protocol handler installation
-      # FIX: Corrected filename from rv.install_handler to rv.install_handler_linux
+    - name: 7. Run RV protocol handler installation
       command: "{{ rv_final_path }}/bin/rv.install_handler_linux"
       changed_when: true
       ignore_errors: yes
 
-    - name: 7. Create RV environment setup script in /etc/profile.d/
-      # CRITICAL FIX: Sets LD_LIBRARY_PATH for ALL users (including AD/LDAP users).
+    - name: 8. Create RV environment setup script in /etc/profile.d/
       copy:
         dest: /etc/profile.d/rv.sh
         mode: '0755'
@@ -81,7 +87,7 @@
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
           export PATH=$RV_HOME/bin:$PATH
 
-    - name: 8. Create RV desktop entry for all users
+    - name: 9. Create RV desktop entry for all users
       copy:
         dest: /usr/share/applications/autodesk-rv.desktop
         mode: '0644'
@@ -97,11 +103,11 @@
           Categories=Graphics;Video;AudioVideo;
           StartupNotify=true
 
-    - name: 9. Update desktop database
+    - name: 10. Update desktop database
       command: update-desktop-database /usr/share/applications/
       changed_when: false
 
-    - name: 10. Clean up temporary zip file
+    - name: 11. Clean up temporary zip file
       file:
         path: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         state: absent
