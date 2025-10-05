@@ -49,7 +49,7 @@
         path: "/tmp/{{ nuke_installer }}"
         state: absent
 
-    # Step 3: Configure Environment Variables for Existing Users
+    # Step 3: Configure Environment Variables - System-wide
     - name: Create Nuke environment configuration script
       copy:
         dest: /etc/profile.d/nuke.sh
@@ -59,9 +59,18 @@
           export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
 
+    # Step 3b: Find existing AD users and configure their environment
+    - name: Find all existing AD user home directories
+      find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_users
+      failed_when: false
+
     - name: Configure Nuke environment for existing AD users
       blockinfile:
-        path: "{{ item }}/.bashrc"
+        path: "{{ item.path }}/.bashrc"
         marker: "# {mark} ANSIBLE MANAGED BLOCK - Nuke Configuration"
         block: |
           # Foundry Nuke Environment
@@ -69,10 +78,10 @@
           export NUKE_PATH={{ nuke_path }}
         create: yes
         mode: '0644'
-      with_fileglob:
-        - "{{ ad_home_base }}/*/.bashrc"
-      when: item is file
-      ignore_errors: yes
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
 
     # Step 4: Configure for Future Users (via /etc/skel)
     - name: Ensure /etc/skel/.bashrc exists
@@ -90,7 +99,7 @@
           export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
 
-    # Step 5: Create GNOME Desktop Icons
+    # Step 5: Create GNOME Desktop Icons in /etc/skel
     - name: Create .local/share/applications directory in /etc/skel
       file:
         path: /etc/skel/.local/share/applications
@@ -146,13 +155,6 @@
           MimeType=application/x-nuke;
 
     # Step 6: Deploy Desktop Icons to Existing AD Users
-    - name: Find all existing AD user home directories
-      find:
-        paths: "{{ ad_home_base }}"
-        file_type: directory
-        recurse: no
-      register: ad_users
-
     - name: Create .local/share/applications for existing users
       file:
         path: "{{ item.path }}/.local/share/applications"
@@ -161,7 +163,7 @@
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
-      when: ad_users.files | length > 0
+      when: ad_users.files is defined and ad_users.files | length > 0
 
     - name: Deploy Nuke desktop entry to existing users
       copy:
@@ -172,7 +174,7 @@
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
-      when: ad_users.files | length > 0
+      when: ad_users.files is defined and ad_users.files | length > 0
 
     - name: Deploy NukeX desktop entry to existing users
       copy:
@@ -183,7 +185,7 @@
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
-      when: ad_users.files | length > 0
+      when: ad_users.files is defined and ad_users.files | length > 0
 
     - name: Deploy Nuke Studio desktop entry to existing users
       copy:
@@ -194,7 +196,7 @@
         owner: "{{ item.uid }}"
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
-      when: ad_users.files | length > 0
+      when: ad_users.files is defined and ad_users.files | length > 0
 
     # Step 7: Verification
     - name: Verify Nuke installation
