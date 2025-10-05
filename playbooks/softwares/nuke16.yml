@@ -9,6 +9,7 @@
     nuke_installer: "Nuke{{ nuke_version }}-linux-x86_64.run"
     nuke_installer_path: "../../files/{{ nuke_installer }}"
     nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
+    nuke_executable: "{{ nuke_install_path }}/Nuke16.0"
     foundry_license: "5053@license"
     nuke_path: "/mnt/Library/_nox-nuke13"
     ad_home_base: "/home/ad.noxvfx.com"
@@ -34,7 +35,7 @@
 
     - name: Check if Nuke is already installed
       stat:
-        path: "{{ nuke_install_path }}/Nuke{{ nuke_version }}"
+        path: "{{ nuke_executable }}"
       register: nuke_installed
 
     - name: Install Nuke to /opt directory
@@ -99,7 +100,7 @@
           export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
 
-# Step 5: Create GNOME Desktop Icons in /etc/skel
+    # Step 5: Create GNOME Desktop Icons in /etc/skel
     - name: Create .local/share/applications directory in /etc/skel
       file:
         path: /etc/skel/.local/share/applications
@@ -116,7 +117,7 @@
           Type=Application
           Name=Nuke {{ nuke_version }}
           Comment=Foundry Nuke Compositor
-          Exec={{ nuke_install_path }}/Nuke{{ nuke_version }} %f
+          Exec={{ nuke_executable }} %f
           Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
@@ -132,7 +133,7 @@
           Type=Application
           Name=NukeX {{ nuke_version }}
           Comment=Foundry NukeX Compositor
-          Exec={{ nuke_install_path }}/Nuke{{ nuke_version }} --nukex %f
+          Exec={{ nuke_executable }} --nukex %f
           Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
@@ -148,7 +149,7 @@
           Type=Application
           Name=Nuke Studio {{ nuke_version }}
           Comment=Foundry Nuke Studio
-          Exec={{ nuke_install_path }}/Nuke{{ nuke_version }} --studio %f
+          Exec={{ nuke_executable }} --studio %f
           Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
@@ -207,7 +208,7 @@
 
     # Step 7: Verification
     - name: Verify Nuke installation
-      command: "{{ nuke_install_path }}/Nuke{{ nuke_version }} --version"
+      command: "{{ nuke_executable }} --version"
       register: nuke_version_output
       changed_when: false
       failed_when: false
@@ -220,6 +221,6 @@
         msg: |
           Nuke Installation Complete!
           Version: {{ nuke_version_output.stdout | default('Unable to detect') }}
-          Installation Path: {{ nuke_install_path }}/Nuke{{ nuke_version }}
+          Installation Path: {{ nuke_executable }}
           License Server: {{ foundry_license }}
           NUKE_PATH: {{ nuke_path }}
