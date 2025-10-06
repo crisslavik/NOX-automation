@@ -99,7 +99,7 @@
           Name=Autodesk RV
           Comment=Media review and playback software
           Exec={{ rv_final_path }}/bin/rv
-          Icon={{ rv_final_path }}/resources/RV.ico
+          Icon={{ rv_final_path }}/resources/RV.icns
           Terminal=false
           Categories=Graphics;Video;AudioVideo;
           StartupNotify=true
