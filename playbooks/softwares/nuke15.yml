@@ -9,7 +9,7 @@
     nuke_installer: "Nuke{{ nuke_version }}-linux-x86_64.run"
     nuke_installer_path: "../../files/{{ nuke_installer }}"
     nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
-    nuke_executable: "{{ nuke_install_path }}/Nuke16.0"
+    nuke_executable: "{{ nuke_install_path }}/Nuke15.2"
     foundry_license: "5053@license"
     nuke_path: "/mnt/Library/_nox-nuke13"
     ad_home_base: "/home/ad.noxvfx.com"
