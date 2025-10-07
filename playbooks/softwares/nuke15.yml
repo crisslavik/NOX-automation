@@ -1,0 +1,226 @@
+---
+- name: Install Foundry Nuke 15.2v3
+  hosts: all
+  become: yes
+  
+  vars:
+    nuke_version: "15.2v3"
+    nuke_install_dir: "/opt"
+    nuke_installer: "Nuke{{ nuke_version }}-linux-x86_64.run"
+    nuke_installer_path: "../../files/{{ nuke_installer }}"
+    nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
+    nuke_executable: "{{ nuke_install_path }}/Nuke16.0"
+    foundry_license: "5053@license"
+    nuke_path: "/mnt/Library/_nox-nuke13"
+    ad_home_base: "/home/ad.noxvfx.com"
+    
+  tasks:
+    # Step 1: Install Dependencies
+    - name: Install required dependencies
+      dnf:
+        name:
+          - numactl-libs           # Required by Nablet H264 Codec SDK
+          - mesa-libGL             # OpenGL library
+          - mesa-libGLU            # OpenGL utility library
+          - libglvnd-opengl        # Vendor-neutral OpenGL dispatch library (provides libOpenGL.so.0)
+          - libglvnd-glx           # GLX support
+        state: present
+
+    # Step 2: Install Nuke
+    - name: Copy Nuke installer to target machine
+      copy:
+        src: "{{ nuke_installer_path }}"
+        dest: "/tmp/{{ nuke_installer }}"
+        mode: '0755'
+
+    - name: Check if Nuke is already installed
+      stat:
+        path: "{{ nuke_executable }}"
+      register: nuke_installed
+
+    - name: Install Nuke to /opt directory
+      command: >
+        /tmp/{{ nuke_installer }}
+        --prefix={{ nuke_install_dir }}
+        --accept-foundry-eula
+      when: not nuke_installed.stat.exists
+
+    - name: Remove installer after installation
+      file:
+        path: "/tmp/{{ nuke_installer }}"
+        state: absent
+
+    # Step 3: Configure Environment Variables - System-wide
+    - name: Create Nuke environment configuration script
+      copy:
+        dest: /etc/profile.d/nuke.sh
+        mode: '0644'
+        content: |
+          # Foundry Nuke Environment Configuration
+          export foundry_LICENSE={{ foundry_license }}
+          export NUKE_PATH={{ nuke_path }}
+
+    # Step 3b: Find existing AD users and configure their environment
+    - name: Find all existing AD user home directories
+      find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_users
+      failed_when: false
+
+    - name: Configure Nuke environment for existing AD users
+      blockinfile:
+        path: "{{ item.path }}/.bashrc"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Nuke Configuration"
+        block: |
+          # Foundry Nuke Environment
+          export foundry_LICENSE={{ foundry_license }}
+          export NUKE_PATH={{ nuke_path }}
+        create: yes
+        mode: '0644'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+
+    # Step 4: Configure for Future Users (via /etc/skel)
+    - name: Ensure /etc/skel/.bashrc exists
+      file:
+        path: /etc/skel/.bashrc
+        state: touch
+        mode: '0644'
+
+    - name: Configure Nuke environment in /etc/skel for future users
+      blockinfile:
+        path: /etc/skel/.bashrc
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Nuke Configuration"
+        block: |
+          # Foundry Nuke Environment
+          export foundry_LICENSE={{ foundry_license }}
+          export NUKE_PATH={{ nuke_path }}
+
+    # Step 5: Create GNOME Desktop Icons in /etc/skel
+    - name: Create .local/share/applications directory in /etc/skel
+      file:
+        path: /etc/skel/.local/share/applications
+        state: directory
+        mode: '0755'
+
+    - name: Create Nuke desktop entry in /etc/skel
+      copy:
+        dest: /etc/skel/.local/share/applications/nuke{{ nuke_version }}.desktop
+        mode: '0755'
+        content: |
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=Nuke {{ nuke_version }}
+          Comment=Foundry Nuke Compositor
+          Exec={{ nuke_executable }} %f
+          Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
+          Terminal=false
+          Categories=Graphics;2DGraphics;VFX;
+          MimeType=application/x-nuke;
+
+    - name: Create NukeX desktop entry in /etc/skel
+      copy:
+        dest: /etc/skel/.local/share/applications/nukex{{ nuke_version }}.desktop
+        mode: '0755'
+        content: |
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=NukeX {{ nuke_version }}
+          Comment=Foundry NukeX Compositor
+          Exec={{ nuke_executable }} --nukex %f
+          Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
+          Terminal=false
+          Categories=Graphics;2DGraphics;VFX;
+          MimeType=application/x-nuke;
+
+    - name: Create Nuke Studio desktop entry in /etc/skel
+      copy:
+        dest: /etc/skel/.local/share/applications/nukestudio{{ nuke_version }}.desktop
+        mode: '0755'
+        content: |
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=Nuke Studio {{ nuke_version }}
+          Comment=Foundry Nuke Studio
+          Exec={{ nuke_executable }} --studio %f
+          Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
+          Terminal=false
+          Categories=Graphics;2DGraphics;VFX;
+          MimeType=application/x-nuke;
+
+    # Step 6: Deploy Desktop Icons to Existing AD Users
+    - name: Create .local/share/applications for existing users
+      file:
+        path: "{{ item.path }}/.local/share/applications"
+        state: directory
+        mode: '0755'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+
+    - name: Deploy Nuke desktop entry to existing users
+      copy:
+        src: /etc/skel/.local/share/applications/nuke{{ nuke_version }}.desktop
+        dest: "{{ item.path }}/.local/share/applications/nuke{{ nuke_version }}.desktop"
+        remote_src: yes
+        mode: '0755'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+
+    - name: Deploy NukeX desktop entry to existing users
+      copy:
+        src: /etc/skel/.local/share/applications/nukex{{ nuke_version }}.desktop
+        dest: "{{ item.path }}/.local/share/applications/nukex{{ nuke_version }}.desktop"
+        remote_src: yes
+        mode: '0755'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+
+    - name: Deploy Nuke Studio desktop entry to existing users
+      copy:
+        src: /etc/skel/.local/share/applications/nukestudio{{ nuke_version }}.desktop
+        dest: "{{ item.path }}/.local/share/applications/nukestudio{{ nuke_version }}.desktop"
+        remote_src: yes
+        mode: '0755'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+
+    - name: Update desktop database for existing users
+      command: update-desktop-database {{ item.path }}/.local/share/applications
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+      changed_when: false
+      failed_when: false
+
+    # Step 7: Verification
+    - name: Verify Nuke installation
+      command: "{{ nuke_executable }} --version"
+      register: nuke_version_output
+      changed_when: false
+      failed_when: false
+      environment:
+        foundry_LICENSE: "{{ foundry_license }}"
+        NUKE_PATH: "{{ nuke_path }}"
+
+    - name: Display installation result
+      debug:
+        msg: |
+          Nuke Installation Complete!
+          Version: {{ nuke_version_output.stdout | default('Unable to detect') }}
+          Installation Path: {{ nuke_executable }}
+          License Server: {{ foundry_license }}
+          NUKE_PATH: {{ nuke_path }}
