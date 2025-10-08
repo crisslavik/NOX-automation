@@ -5,7 +5,7 @@
   vars:
     # --- Installation Path Variables ---
     # This is the final path where the RV files will reside (e.g., /opt/RV/bin/rv)
-    rv_final_path: "/opt/Autodesk/RV"
+    rv_final_path: "/opt/Autodesk/RV-2025.0.0"
     # This is the parent directory for extraction (to avoid the double-folder issue)
     rv_extract_parent_path: "/opt/Autodesk"
     # Source file details (must exist in your Ansible 'files' directory)
