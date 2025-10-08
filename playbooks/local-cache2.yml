@@ -6,7 +6,6 @@
   vars:
     cache_mount_point: "/mnt/Cache"
     cache_label: "Cache"
-    # Approximate disk size range in bytes (900GiB to 1100GiB)
     min_disk_size_bytes: 966367641600
     max_disk_size_bytes: 1181116006400
 
@@ -41,9 +40,7 @@
               {{
                 ansible_devices
                 | dict2items
-                # FIX: First, ensure the 'type' attribute exists
                 | selectattr('value.type', 'defined')
-                # Then, check if the type is 'disk'
                 | selectattr('value.type', 'equalto', 'disk')
                 | selectattr('value.partitions', 'equalto', {})
                 | selectattr('value.filesystem', 'undefined')
@@ -59,14 +56,11 @@
             msg: "Found potential unformatted disk(s): {{ potential_devices }}"
           when: potential_devices is defined and potential_devices | length > 0
 
-        #
-        # Task Block: Handle user confirmation for formatting
-        #
         - name: Handle formatting confirmation
           block:
             - name: Fail if multiple potential disks are found
               ansible.builtin.fail:
-                msg: "Found multiple unformatted disks matching the size criteria: {{ potential_devices | join(', ') }}. Please label the correct one with '{{ cache_label }}' manually and re-run."
+                msg: "Found multiple unformatted disks: {{ potential_devices | join(', ') }}. Please label the correct one with '{{ cache_label }}' manually and re-run."
               when: potential_devices | length > 1
 
             - name: Prompt for confirmation to format the single disk found
@@ -98,11 +92,7 @@
             fstype: xfs
             dev: "{{ device_to_format }}"
             label: "{{ cache_label }}"
-            force: yes # Be careful with this in production
-
-        - name: Set the target device path after formatting
-          ansible.builtin.set_fact:
-            target_device_path: "{{ device_to_format }}"
+            force: yes
       when: device_to_format is defined
 
     #
@@ -128,13 +118,13 @@
             src: "LABEL={{ cache_label }}"
             fstype: xfs
             opts: defaults,noatime
-            state: mounted # This ensures it's mounted and in fstab
+            state: mounted
 
         - name: Set permissions for all users
           ansible.builtin.file:
             path: "{{ cache_mount_point }}"
             state: directory
-            mode: '1777' # Sticky bit for shared directory
+            mode: '1777'
             owner: root
             group: root
 
@@ -150,4 +140,4 @@
               - "Cache disk setup complete!"
               - "Device with Label '{{ cache_label }}' is mounted at {{ cache_mount_point }}."
               - "Permissions are set to '1777' for shared use."
-      when: target_device_path is defined
+      when: device_to_format is defined or target_device_path is defined
