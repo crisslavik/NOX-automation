@@ -99,8 +99,11 @@
       shell: |
         if [ -d "{{ ad_home_base }}" ]; then
           find {{ ad_home_base }} -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | while read user; do
-            home=$(getent passwd "$user" 2>/dev/null | cut -d: -f6)
-            [ -n "$home" ] && echo "$user:$home"
+            userinfo=$(getent passwd "$user" 2>/dev/null)
+            if [ -n "$userinfo" ]; then
+              home=$(echo "$userinfo" | cut -d: -f6)
+              echo "$user:$home"
+            fi
           done
         fi
       register: ad_users
@@ -111,22 +114,6 @@
         msg: "Found {{ ad_users.stdout_lines | length }} AD users: {{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
-    - name: Get list of existing AD users from home directory
-      shell: |
-        if [ -d "{{ ad_home_base }}" ]; then
-          find {{ ad_home_base }} -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | while read user; do
-            userinfo=$(getent passwd "$user" 2>/dev/null)
-            if [ -n "$userinfo" ]; then
-              home=$(echo "$userinfo" | cut -d: -f6)
-              gid=$(echo "$userinfo" | cut -d: -f4)
-              groupname=$(getent group "$gid" | cut -d: -f1)
-              echo "$user:$home:$groupname"
-            fi
-          done
-        fi
-      register: ad_users
-      changed_when: false
-
     - name: Configure NeatVideo license for existing AD users
       lineinfile:
         path: "{{ item.split(':')[1] }}/.bashrc"
@@ -135,7 +122,6 @@
         create: yes
         mode: '0644'
         owner: "{{ item.split(':')[0] }}"
-        group: "{{ item.split(':')[2] }}"
       loop: "{{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
@@ -154,7 +140,6 @@
         state: directory
         mode: '0755'
         owner: "{{ item.split(':')[0] }}"
-        group: "{{ item.split(':')[0] }}"
       loop: "{{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
@@ -181,7 +166,6 @@
         state: directory
         mode: '0700'
         owner: "{{ item.split(':')[0] }}"
-        group: "{{ item.split(':')[0] }}"
       loop: "{{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
@@ -193,7 +177,6 @@
         dest: "{{ item.split(':')[1] }}/{{ neatvideo_config_dir }}/preferences.txt"
         mode: '0644'
         owner: "{{ item.split(':')[0] }}"
-        group: "{{ item.split(':')[0] }}"
       loop: "{{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
@@ -222,7 +205,7 @@
           - "Usage in Nuke:"
           - "  Python: nuke.createNode('Reduce Noise v5')"
           - "  GUI: Tab menu → Filter → Neat Video → Reduce Noise v5"
-          - "========================================="
+          - "=========================================  "
           - "Host applications supported:"
           - "  - Nuke (commercial versions)"
           - "  - Fusion Studio"
