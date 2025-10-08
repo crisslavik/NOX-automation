@@ -46,7 +46,6 @@
             potential_devices: >-
               {%- set candidates = [] -%}
               {%- for name, data in ansible_devices.items() -%}
-                {# The check for 'data.type' has been removed as it was the point of failure #}
                 {%- if data.partitions is defined and data.partitions == {}
                     and data.filesystem is undefined
                     and data.sectors is defined and data.sectorsize is defined
@@ -67,13 +66,15 @@
           when: potential_devices | length == 1
 
         - name: Format the selected disk
-          community.general.filesystem:
+          ansible.builtin.filesystem: # Using core module
             fstype: xfs
             dev: "/dev/{{ potential_devices[0] }}"
-            label: "{{ cache_label }}"
+            opts: "-L {{ cache_label }}" # FIX 1: Using 'opts' instead of 'label'
             force: yes
           when:
             - potential_devices | length == 1
+            # FIX 2: Added 'format_confirmation is defined' for safety
+            - format_confirmation is defined
             - format_confirmation.user_input | lower == 'yes'
 
         - name: Set the device path after formatting
@@ -81,9 +82,10 @@
             target_device_path: "/dev/{{ potential_devices[0] }}"
           when:
             - potential_devices | length == 1
+            # FIX 2: Added 'format_confirmation is defined' for safety
+            - format_confirmation is defined
             - format_confirmation.user_input | lower == 'yes'
       when: target_device_path is not defined
-
 
     - name: Mount the cache drive if a device was found or created
       block:
