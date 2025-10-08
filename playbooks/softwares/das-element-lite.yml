@@ -86,3 +86,4 @@
           #### path to the resources folder, for presets, hooks, etc.
           DASELEMENT_RESOURCES={{ daselement_resources_path }}
       loop: "{{ das_element_dirs.files }}"
+      when: das_element_dirs.files | length > 0
