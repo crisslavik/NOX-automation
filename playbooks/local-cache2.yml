@@ -41,16 +41,13 @@
 
     - name: Find an unformatted disk (if no labeled partition was found)
       block:
-        #
-        # === FINAL FIX STARTS HERE ===
-        #
         - name: Find potential unformatted disks
           ansible.builtin.set_fact:
             potential_devices: >-
               {%- set candidates = [] -%}
               {%- for name, data in ansible_devices.items() -%}
-                {%- if data.type is defined and data.type == 'disk'
-                    and data.partitions is defined and data.partitions == {}
+                {# The check for 'data.type' has been removed as it was the point of failure #}
+                {%- if data.partitions is defined and data.partitions == {}
                     and data.filesystem is undefined
                     and data.sectors is defined and data.sectorsize is defined
                     and (data.sectors | int * data.sectorsize | int) >= min_disk_size_bytes
@@ -59,9 +56,6 @@
                 {%- endif -%}
               {%- endfor -%}
               {{- candidates -}}
-        #
-        # === FINAL FIX ENDS HERE ===
-        #
 
         - name: Prompt to format if one potential disk is found
           ansible.builtin.pause:
