@@ -95,16 +95,21 @@
         create: yes
         mode: '0644'
 
-    - name: Get list of existing AD users (UID > 400000000)
+    - name: Get list of existing AD users from home directory
       shell: |
-        getent passwd | awk -F: '$3 > 400000000 && $6 ~ /^\/home\/{{ ad_domain }}/ {print $1":"$6}'
+        if [ -d "{{ ad_home_base }}" ]; then
+          find {{ ad_home_base }} -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | while read user; do
+            home=$(getent passwd "$user" 2>/dev/null | cut -d: -f6)
+            [ -n "$home" ] && echo "$user:$home"
+          done
+        fi
       register: ad_users
       changed_when: false
 
     - name: Debug - Show detected AD users
       debug:
-        msg: "Found {{ ad_users.stdout_lines | length }} AD users"
-        verbosity: 1
+        msg: "Found {{ ad_users.stdout_lines | length }} AD users: {{ ad_users.stdout_lines }}"
+      when: ad_users.stdout_lines | length > 0
 
     - name: Configure NeatVideo license for existing AD users
       lineinfile:
