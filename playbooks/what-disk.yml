@@ -1,5 +1,5 @@
 ---
-- name: Debug Storage Facts
+- name: Dynamically Debug Storage Facts
   hosts: all
   gather_facts: no # We will gather them manually
   tasks:
@@ -7,7 +7,11 @@
       ansible.builtin.setup:
         filter: ansible_devices
 
-    - name: Display all information for the nvme2n1 device
+    - name: Find and display facts for the device containing the 'Cache' label
       ansible.builtin.debug:
-        var: ansible_devices.nvme2n1
-      when: "'nvme2n1' in ansible_devices"
+        var: item.value # This prints all the facts for the device it found
+      loop: "{{ ansible_devices | dict2items }}"
+      when:
+        - item.value.links is defined
+        - item.value.links['by-label'] is defined
+        - "'Cache' in item.value.links['by-label']"
