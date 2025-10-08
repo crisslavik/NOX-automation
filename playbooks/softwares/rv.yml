@@ -74,7 +74,7 @@
       changed_when: true
       ignore_errors: yes
 
-- name: 8. Create RV environment setup script in /etc/profile.d/
+    - name: 8. Create RV environment setup script in /etc/profile.d/
       copy:
         dest: /etc/profile.d/rv.sh
         mode: '0755'
