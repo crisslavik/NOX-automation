@@ -21,15 +21,10 @@
       ansible.builtin.setup:
         filter: ansible_devices
 
-    #
-    # === FINAL DISCOVERY LOGIC STARTS HERE ===
-    #
     - name: Find partition with the correct label
       ansible.builtin.set_fact:
         target_device_path: "/dev/{{ matching_partitions[0] }}"
       vars:
-        # This is a highly compatible way to build a list of matching partitions.
-        # It works on all versions of Jinja2.
         matching_partitions: >-
           {%- set partitions = [] -%}
           {%- for device in ansible_devices.values() -%}
@@ -43,26 +38,30 @@
           {%- endfor -%}
           {{- partitions -}}
       when: matching_partitions | length > 0
-    #
-    # === FINAL DISCOVERY LOGIC ENDS HERE ===
-    #
 
     - name: Find an unformatted disk (if no labeled partition was found)
       block:
+        #
+        # === FINAL FIX STARTS HERE ===
+        #
         - name: Find potential unformatted disks
           ansible.builtin.set_fact:
             potential_devices: >-
-              {{
-                ansible_devices | dict2items
-                | selectattr('value.type', 'defined')
-                | selectattr('value.type', 'equalto', 'disk')
-                | selectattr('value.partitions', 'equalto', {})
-                | selectattr('value.filesystem', 'undefined')
-                | selectattr('value.size_bytes', '>=', min_disk_size_bytes)
-                | selectattr('value.size_bytes', '<=', max_disk_size_bytes)
-                | map(attribute='key')
-                | list
-              }}
+              {%- set candidates = [] -%}
+              {%- for name, data in ansible_devices.items() -%}
+                {%- if data.type is defined and data.type == 'disk'
+                    and data.partitions is defined and data.partitions == {}
+                    and data.filesystem is undefined
+                    and data.sectors is defined and data.sectorsize is defined
+                    and (data.sectors | int * data.sectorsize | int) >= min_disk_size_bytes
+                    and (data.sectors | int * data.sectorsize | int) <= max_disk_size_bytes -%}
+                  {%- set _ = candidates.append(name) -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {{- candidates -}}
+        #
+        # === FINAL FIX ENDS HERE ===
+        #
 
         - name: Prompt to format if one potential disk is found
           ansible.builtin.pause:
