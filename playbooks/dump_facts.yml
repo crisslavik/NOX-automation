@@ -1,0 +1,12 @@
+---
+- name: Dump Storage Facts for Debugging
+  hosts: nox-cmp-04,nox-cmp-06
+  gather_facts: no
+  tasks:
+    - name: Gather only storage facts
+      ansible.builtin.setup:
+        filter: ansible_devices
+
+    - name: Display all storage facts for this host
+      ansible.builtin.debug:
+        var: ansible_devices
