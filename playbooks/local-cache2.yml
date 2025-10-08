@@ -41,6 +41,9 @@
               {{
                 ansible_devices
                 | dict2items
+                # FIX: First, ensure the 'type' attribute exists
+                | selectattr('value.type', 'defined')
+                # Then, check if the type is 'disk'
                 | selectattr('value.type', 'equalto', 'disk')
                 | selectattr('value.partitions', 'equalto', {})
                 | selectattr('value.filesystem', 'undefined')
