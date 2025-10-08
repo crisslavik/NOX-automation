@@ -29,11 +29,13 @@
 
         - name: Attempt to find disk by label '{{ cache_label }}'
           ansible.builtin.set_fact:
-            target_device_path: "{{ item.value.links.by-label[cache_label] | default(omit) }}"
+            # FIX: Use bracket notation for keys with hyphens
+            target_device_path: "{{ item.value.links['by-label'][cache_label] | default(omit) }}"
           loop: "{{ ansible_devices | dict2items }}"
           when:
-            - item.value.links.by-label is defined
-            - cache_label in item.value.links.by-label
+            # FIX: Use bracket notation for keys with hyphens
+            - item.value.links['by-label'] is defined
+            - cache_label in item.value.links['by-label']
 
         - name: If not found by label, find unformatted ~1TB disk
           ansible.builtin.set_fact:
