@@ -59,14 +59,14 @@
     # ========================================
     # STEP 2: Remove Uninstall Desktop Shortcuts
     # ========================================
-    - name: Find and remove uninstall desktop shortcuts in user homes
+    - name: Remove uninstall text file from all AD user desktops
       shell: |
-        find {{ ad_home_base }} -maxdepth 4 \( -name "*neatvideo*uninstall*.desktop" -o -name "*Uninstall*Neat*.desktop" \) -delete 2>/dev/null || true
+        find {{ ad_home_base }}/*/Desktop -name "Uninstall*.txt" -delete 2>/dev/null || true
       changed_when: false
 
-    - name: Remove uninstall shortcuts from /etc/skel
+    - name: Remove uninstall shortcuts from /etc/skel Desktop
       shell: |
-        find {{ skel_path }} -maxdepth 4 \( -name "*neatvideo*uninstall*.desktop" -o -name "*Uninstall*Neat*.desktop" \) -delete 2>/dev/null || true
+        rm -f {{ skel_path }}/Desktop/Uninstall*.txt 2>/dev/null || true
       changed_when: false
 
     # ========================================
@@ -97,9 +97,14 @@
 
     - name: Get list of existing AD users (UID > 400000000)
       shell: |
-        getent passwd | awk -F: '$3 > 400000000 {print $1":"$6}'
+        getent passwd | awk -F: '$3 > 400000000 && $6 ~ /^\/home\/{{ ad_domain }}/ {print $1":"$6}'
       register: ad_users
       changed_when: false
+
+    - name: Debug - Show detected AD users
+      debug:
+        msg: "Found {{ ad_users.stdout_lines | length }} AD users"
+        verbosity: 1
 
     - name: Configure NeatVideo license for existing AD users
       lineinfile:
