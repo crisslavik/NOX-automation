@@ -117,7 +117,7 @@
           Type=Application
           Name=Nuke {{ nuke_version }}
           Comment=Foundry Nuke Compositor
-          Exec={{ nuke_executable }} %f
+          Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_executable }} %f
           Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
@@ -133,7 +133,7 @@
           Type=Application
           Name=NukeX {{ nuke_version }}
           Comment=Foundry NukeX Compositor
-          Exec={{ nuke_executable }} --nukex %f
+          Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_executable }} --nukex %f
           Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
@@ -149,7 +149,7 @@
           Type=Application
           Name=Nuke Studio {{ nuke_version }}
           Comment=Foundry Nuke Studio
-          Exec={{ nuke_executable }} --studio %f
+          Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_executable }} --studio %f
           Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
