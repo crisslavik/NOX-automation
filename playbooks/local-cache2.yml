@@ -1,9 +1,11 @@
 ---
-- name: Setup Local Cache Disk
+- name: Setup Single Cache Disk (Automated)
   hosts: all
   become: yes
 
   vars:
+    # IMPORTANT: Set this to true on the command line to enable automatic formatting.
+    auto_format_single_disk: false
     cache_mount_point: "/mnt/Cache"
     cache_label: "Cache"
     min_disk_size_bytes: 966367641600
@@ -12,16 +14,14 @@
   tasks:
     - name: Ensure filesystem tools are installed
       ansible.builtin.dnf:
-        name:
-          - xfsprogs
-          - e2fsprogs
+        name: [xfsprogs, e2fsprogs]
         state: present
 
     - name: Gather storage facts
       ansible.builtin.setup:
         filter: ansible_devices
 
-    - name: Find partition with the correct label
+    - name: Find existing partition labeled '{{ cache_label }}'
       ansible.builtin.set_fact:
         target_device_path: "/dev/{{ matching_partitions[0] }}"
       vars:
@@ -39,7 +39,7 @@
           {{- partitions -}}
       when: matching_partitions | length > 0
 
-    - name: Find an unformatted disk (if no labeled partition was found)
+    - name: Find and automatically format a single unformatted disk
       block:
         - name: Find potential unformatted disks
           ansible.builtin.set_fact:
@@ -56,48 +56,33 @@
               {%- endfor -%}
               {{- candidates -}}
 
-        - name: Prompt to format if one potential disk is found
-          ansible.builtin.pause:
-            prompt: |
-              Host: {{ inventory_hostname }}
-              Found unformatted disk: /dev/{{ potential_devices[0] }}
-              Do you want to format it as a cache drive? (yes/no)
-          register: format_confirmation
+        - name: Automatically format the single disk found
+          block:
+            - name: Inform which disk will be formatted
+              ansible.builtin.debug:
+                msg: "Found single blank disk /dev/{{ potential_devices[0] }}. Formatting automatically."
+
+            - name: Format the disk
+              ansible.builtin.filesystem:
+                fstype: xfs
+                dev: "/dev/{{ potential_devices[0] }}"
+                opts: "-L {{ cache_label }}"
+                force: yes
+
+            - name: Set the device path after formatting
+              ansible.builtin.set_fact:
+                target_device_path: "/dev/{{ potential_devices[0] }}"
           when: potential_devices | length == 1
 
-        - name: Format the selected disk
-          ansible.builtin.filesystem: # Using core module
-            fstype: xfs
-            dev: "/dev/{{ potential_devices[0] }}"
-            opts: "-L {{ cache_label }}" # FIX 1: Using 'opts' instead of 'label'
-            force: yes
-          when:
-            - potential_devices | length == 1
-            # FIX 2: Added 'format_confirmation is defined' for safety
-            - format_confirmation is defined
-            - format_confirmation.user_input | lower == 'yes'
-
-        - name: Set the device path after formatting
-          ansible.builtin.set_fact:
-            target_device_path: "/dev/{{ potential_devices[0] }}"
-          when:
-            - potential_devices | length == 1
-            # FIX 2: Added 'format_confirmation is defined' for safety
-            - format_confirmation is defined
-            - format_confirmation.user_input | lower == 'yes'
-      when: target_device_path is not defined
+      when:
+        - target_device_path is not defined
+        - auto_format_single_disk | bool
 
     - name: Mount the cache drive if a device was found or created
       block:
         - name: Display final device path
           ansible.builtin.debug:
             msg: "Found or created cache device: {{ target_device_path }}"
-
-        - name: Stop autofs to create mount point safely
-          ansible.builtin.systemd:
-            name: autofs
-            state: stopped
-          ignore_errors: yes
 
         - name: Create cache mount point
           ansible.builtin.file:
@@ -118,18 +103,4 @@
             path: "{{ cache_mount_point }}"
             state: directory
             mode: '1777'
-            owner: root
-            group: root
-
-        - name: Start autofs
-          ansible.builtin.systemd:
-            name: autofs
-            state: started
-          ignore_errors: yes
-
-        - name: Display final summary
-          ansible.builtin.debug:
-            msg:
-              - "Cache disk setup complete!"
-              - "Device with Label '{{ cache_label }}' is mounted at {{ cache_mount_point }}."
       when: target_device_path is defined
