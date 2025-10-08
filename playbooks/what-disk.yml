@@ -1,0 +1,13 @@
+---
+- name: Debug Storage Facts
+  hosts: all
+  gather_facts: no # We will gather them manually
+  tasks:
+    - name: Gather only storage facts
+      ansible.builtin.setup:
+        filter: ansible_devices
+
+    - name: Display all information for the nvme2n1 device
+      ansible.builtin.debug:
+        var: ansible_devices.nvme2n1
+      when: "'nvme2n1' in ansible_devices"
