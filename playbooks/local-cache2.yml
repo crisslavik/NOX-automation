@@ -21,21 +21,31 @@
       ansible.builtin.setup:
         filter: ansible_devices
 
+    #
+    # === FINAL DISCOVERY LOGIC STARTS HERE ===
+    #
     - name: Find partition with the correct label
       ansible.builtin.set_fact:
-        target_device_path: "/dev/{{ item }}"
-      loop: >-
-        {{
-          [
-            partition_name
-            for device in ansible_devices.values()
-            if device.partitions is defined
-            for partition_name, partition_data in device.partitions.items()
-            if partition_data.links is defined
-            and partition_data.links.labels is defined
-            and cache_label in partition_data.links.labels
-          ]
-        }}
+        target_device_path: "/dev/{{ matching_partitions[0] }}"
+      vars:
+        # This is a highly compatible way to build a list of matching partitions.
+        # It works on all versions of Jinja2.
+        matching_partitions: >-
+          {%- set partitions = [] -%}
+          {%- for device in ansible_devices.values() -%}
+            {%- if device.partitions is defined -%}
+              {%- for name, data in device.partitions.items() -%}
+                {%- if data.links is defined and data.links.labels is defined and cache_label in data.links.labels -%}
+                  {%- set _ = partitions.append(name) -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{- partitions -}}
+      when: matching_partitions | length > 0
+    #
+    # === FINAL DISCOVERY LOGIC ENDS HERE ===
+    #
 
     - name: Find an unformatted disk (if no labeled partition was found)
       block:
@@ -73,8 +83,6 @@
             - potential_devices | length == 1
             - format_confirmation.user_input | lower == 'yes'
 
-        # This is the task that had the syntax error.
-        # Ensure 'ansible.builtin.set_fact:' is all on one line.
         - name: Set the device path after formatting
           ansible.builtin.set_fact:
             target_device_path: "/dev/{{ potential_devices[0] }}"
