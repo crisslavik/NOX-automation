@@ -106,6 +106,32 @@
       debug:
         msg: "{{ blender_version_check.stdout }}"
 
+    # ===== STEP 3.5: Create Desktop Entry =====
+    - name: Create Blender desktop entry
+      copy:
+        dest: "/usr/share/applications/blender-{{ blender_version }}.desktop"
+        content: |
+          [Desktop Entry]
+          Name=Blender {{ blender_version }}
+          GenericName=3D modeler
+          Comment=3D modeling, animation, rendering and post-production
+          Exec={{ blender_install_path }}/blender %f
+          Icon={{ blender_install_path }}/blender.svg
+          Terminal=false
+          Type=Application
+          Categories=Graphics;3DGraphics;
+          MimeType=application/x-blender;
+          StartupNotify=false
+          StartupWMClass=Blender
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Update desktop database
+      command: update-desktop-database /usr/share/applications
+      changed_when: false
+
+
     # ===== STEP 4: Configure for Existing AD Users =====
     - name: Find all existing AD users (UID > 400000000)
       shell: "getent passwd | awk -F: '$3 > 400000000 {print $1\":\"$6}'"
