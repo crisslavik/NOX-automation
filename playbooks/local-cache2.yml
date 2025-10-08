@@ -29,11 +29,9 @@
 
         - name: Attempt to find disk by label '{{ cache_label }}'
           ansible.builtin.set_fact:
-            # FIX: Use bracket notation for keys with hyphens
             target_device_path: "{{ item.value.links['by-label'][cache_label] | default(omit) }}"
           loop: "{{ ansible_devices | dict2items }}"
           when:
-            # FIX: Use bracket notation for keys with hyphens
             - item.value.links['by-label'] is defined
             - cache_label in item.value.links['by-label']
 
@@ -43,6 +41,8 @@
               {{
                 ansible_devices
                 | dict2items
+                # FIX: Only consider devices of type 'disk'
+                | selectattr('value.type', 'equalto', 'disk')
                 | selectattr('value.partitions', 'equalto', {})
                 | selectattr('value.filesystem', 'undefined')
                 | selectattr('value.size_bytes', '>=', min_disk_size_bytes)
