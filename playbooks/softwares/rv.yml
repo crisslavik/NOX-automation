@@ -46,14 +46,18 @@
         dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         mode: '0644'
 
-    - name: 4. Extract RV zip file to parent directory (avoiding double '/opt/RV/RV')
-      # Extracts to /opt/Autodesk. The internal 'RV' folder inside the zip will result in /opt/Autodesk/RV.
+    - name: 4. Extract RV zip file to parent directory
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         dest: "{{ rv_extract_parent_path }}"
         remote_src: yes
+
+    - name: 5. Rename extracted RV folder to RV-2025.0.0
+      command: mv {{ rv_extract_parent_path }}/RV {{ rv_final_path }}
+      args:
+        creates: "{{ rv_final_path }}"
         
-    - name: 5. Set ownership and proper permissions on RV directory
+    - name: 6. Set ownership and proper permissions on RV directory
       file:
         path: "{{ rv_final_path }}"
         state: directory
@@ -62,19 +66,19 @@
         owner: root
         group: root
 
-    - name: 6. Ensure RV binaries are executable
+    - name: 7. Ensure RV binaries are executable
       file:
         path: "{{ rv_final_path }}/bin"
         state: directory
         recurse: yes
         mode: 'u=rwx,g=rx,o=rx'
 
-    - name: 7. Run RV protocol handler installation
+    - name: 8. Run RV protocol handler installation
       command: "{{ rv_final_path }}/bin/rv.install_handler_linux"
       changed_when: true
       ignore_errors: yes
 
-    - name: 8. Create RV environment setup script in /etc/profile.d/
+    - name: 9. Create RV environment setup script in /etc/profile.d/
       copy:
         dest: /etc/profile.d/rv.sh
         mode: '0755'
@@ -88,7 +92,7 @@
           export LD_LIBRARY_PATH=$RV_HOME/lib:$LD_LIBRARY_PATH
           export PATH=$RV_HOME/bin:$PATH
 
-    - name: 9. Create RV desktop entry for all users
+    - name: 10. Create RV desktop entry for all users
       copy:
         dest: /usr/share/applications/autodesk-rv.desktop
         mode: '0644'
@@ -104,11 +108,11 @@
           Categories=Graphics;Video;AudioVideo;
           StartupNotify=true
 
-    - name: 10. Update desktop database
+    - name: 11. Update desktop database
       command: update-desktop-database /usr/share/applications/
       changed_when: false
 
-    - name: 11. Clean up temporary zip file
+    - name: 12. Clean up temporary zip file
       file:
         path: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         state: absent
