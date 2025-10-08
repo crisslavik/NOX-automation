@@ -111,6 +111,22 @@
         msg: "Found {{ ad_users.stdout_lines | length }} AD users: {{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
+    - name: Get list of existing AD users from home directory
+      shell: |
+        if [ -d "{{ ad_home_base }}" ]; then
+          find {{ ad_home_base }} -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | while read user; do
+            userinfo=$(getent passwd "$user" 2>/dev/null)
+            if [ -n "$userinfo" ]; then
+              home=$(echo "$userinfo" | cut -d: -f6)
+              gid=$(echo "$userinfo" | cut -d: -f4)
+              groupname=$(getent group "$gid" | cut -d: -f1)
+              echo "$user:$home:$groupname"
+            fi
+          done
+        fi
+      register: ad_users
+      changed_when: false
+
     - name: Configure NeatVideo license for existing AD users
       lineinfile:
         path: "{{ item.split(':')[1] }}/.bashrc"
@@ -119,7 +135,7 @@
         create: yes
         mode: '0644'
         owner: "{{ item.split(':')[0] }}"
-        group: "{{ item.split(':')[0] }}"
+        group: "{{ item.split(':')[2] }}"
       loop: "{{ ad_users.stdout_lines }}"
       when: ad_users.stdout_lines | length > 0
 
