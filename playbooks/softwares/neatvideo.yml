@@ -35,25 +35,16 @@
         dest: /tmp/{{ neatvideo_installer }}
         mode: '0755'
 
-    - name: Run NeatVideo installer in unattended mode
-      shell: |
-        echo -e "\n\n\n\n\n" | /tmp/{{ neatvideo_installer }} --mode unattended || \
-        /tmp/{{ neatvideo_installer }} --mode silent || \
-        yes "" | /tmp/{{ neatvideo_installer }}
+    - name: Run NeatVideo installer in silent mode
+      command: /tmp/{{ neatvideo_installer }} --mode silent
       args:
         creates: "{{ install_base }}"
       register: install_result
-      failed_when: false
 
-    - name: Check if installation succeeded
-      stat:
-        path: "{{ install_base }}"
-      register: install_check
-
-    - name: Fail if installation did not complete
-      fail:
-        msg: "NeatVideo installation failed"
-      when: not install_check.stat.exists
+    - name: Show installation output
+      debug:
+        var: install_result.stdout_lines
+      when: install_result.changed
 
     - name: Verify OFX plugin installation
       stat:
@@ -66,7 +57,20 @@
       when: ofx_check.stat.exists
 
     # ========================================
-    # STEP 2: Configure License
+    # STEP 2: Remove Uninstall Desktop Shortcuts
+    # ========================================
+    - name: Find and remove uninstall desktop shortcuts in user homes
+      shell: |
+        find {{ ad_home_base }} -maxdepth 4 \( -name "*neatvideo*uninstall*.desktop" -o -name "*Uninstall*Neat*.desktop" \) -delete 2>/dev/null || true
+      changed_when: false
+
+    - name: Remove uninstall shortcuts from /etc/skel
+      shell: |
+        find {{ skel_path }} -maxdepth 4 \( -name "*neatvideo*uninstall*.desktop" -o -name "*Uninstall*Neat*.desktop" \) -delete 2>/dev/null || true
+      changed_when: false
+
+    # ========================================
+    # STEP 3: Configure License
     # ========================================
     - name: Configure NeatVideo floating license - system-wide
       lineinfile:
@@ -110,7 +114,7 @@
       when: ad_users.stdout_lines | length > 0
 
     # ========================================
-    # STEP 3: Configure Plugin Preferences
+    # STEP 4: Configure Plugin Preferences
     # ========================================
     - name: Create NeatVideo config directory in /etc/skel
       file:
@@ -129,7 +133,7 @@
       when: ad_users.stdout_lines | length > 0
 
     # ========================================
-    # STEP 4: Configure Temporary Files
+    # STEP 5: Configure Temporary Files
     # ========================================
     - name: Create global NeatVideo temp directory
       file:
@@ -168,7 +172,7 @@
       when: ad_users.stdout_lines | length > 0
 
     # ========================================
-    # STEP 5: Cleanup
+    # STEP 6: Cleanup
     # ========================================
     - name: Clean up installer file
       file:
@@ -176,7 +180,7 @@
         state: absent
 
     # ========================================
-    # STEP 6: Verification
+    # STEP 7: Verification
     # ========================================
     - name: Display installation summary
       debug:
@@ -188,6 +192,10 @@
           - "License server: {{ license_server }}"
           - "Config directory: ~/{{ neatvideo_config_dir }}"
           - "Temp directory: {{ neatvideo_temp_base }}/$USER"
+          - "========================================="
+          - "Usage in Nuke:"
+          - "  Python: nuke.createNode('Reduce Noise v5')"
+          - "  GUI: Tab menu → Filter → Neat Video → Reduce Noise v5"
           - "========================================="
           - "Host applications supported:"
           - "  - Nuke (commercial versions)"
