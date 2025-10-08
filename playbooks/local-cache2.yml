@@ -41,7 +41,6 @@
               {{
                 ansible_devices
                 | dict2items
-                # FIX: Only consider devices of type 'disk'
                 | selectattr('value.type', 'equalto', 'disk')
                 | selectattr('value.partitions', 'equalto', {})
                 | selectattr('value.filesystem', 'undefined')
