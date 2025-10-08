@@ -21,15 +21,9 @@
       ansible.builtin.setup:
         filter: ansible_devices
 
-    #
-    # === NEW DISCOVERY LOGIC STARTS HERE ===
-    #
     - name: Find partition with the correct label
       ansible.builtin.set_fact:
-        # The loop will contain the partition name, e.g., "nvme2n1p1"
         target_device_path: "/dev/{{ item }}"
-      # This Jinja2 expression creates a list of partition names that have the 'Cache' label.
-      # The Ansible 'loop' then iterates over that list.
       loop: >-
         {{
           [
@@ -42,9 +36,6 @@
             and cache_label in partition_data.links.labels
           ]
         }}
-    #
-    # === NEW DISCOVERY LOGIC ENDS HERE ===
-    #
 
     - name: Find an unformatted disk (if no labeled partition was found)
       block:
@@ -82,5 +73,60 @@
             - potential_devices | length == 1
             - format_confirmation.user_input | lower == 'yes'
 
+        # This is the task that had the syntax error.
+        # Ensure 'ansible.builtin.set_fact:' is all on one line.
         - name: Set the device path after formatting
-          ansible
+          ansible.builtin.set_fact:
+            target_device_path: "/dev/{{ potential_devices[0] }}"
+          when:
+            - potential_devices | length == 1
+            - format_confirmation.user_input | lower == 'yes'
+      when: target_device_path is not defined
+
+
+    - name: Mount the cache drive if a device was found or created
+      block:
+        - name: Display final device path
+          ansible.builtin.debug:
+            msg: "Found or created cache device: {{ target_device_path }}"
+
+        - name: Stop autofs to create mount point safely
+          ansible.builtin.systemd:
+            name: autofs
+            state: stopped
+          ignore_errors: yes
+
+        - name: Create cache mount point
+          ansible.builtin.file:
+            path: "{{ cache_mount_point }}"
+            state: directory
+            mode: '0755'
+
+        - name: Mount the cache disk and add to fstab
+          ansible.builtin.mount:
+            path: "{{ cache_mount_point }}"
+            src: "LABEL={{ cache_label }}"
+            fstype: xfs
+            opts: defaults,noatime
+            state: mounted
+
+        - name: Set permissions for all users
+          ansible.builtin.file:
+            path: "{{ cache_mount_point }}"
+            state: directory
+            mode: '1777'
+            owner: root
+            group: root
+
+        - name: Start autofs
+          ansible.builtin.systemd:
+            name: autofs
+            state: started
+          ignore_errors: yes
+
+        - name: Display final summary
+          ansible.builtin.debug:
+            msg:
+              - "Cache disk setup complete!"
+              - "Device with Label '{{ cache_label }}' is mounted at {{ cache_mount_point }}."
+      when: target_device_path is defined
