@@ -1,0 +1,27 @@
+---
+- name: Configure AD User Shell Environment (Fixes 'bash-5.1$' prompt)
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Get list of AD-integrated users (UID > 1000)
+      # Use getent to list all users and filter out system users by UID range (UID > 1000)
+      ansible.builtin.shell: |
+        getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $6}' | awk -F/ '{print $NF}' | grep -vE 'lost\+found|vagrant|cloud-user|ec2-user|admin|shared'
+      register: home_dirs
+      changed_when: false
+      # Allow the task to succeed even if no users are found (rc=0 or rc=1)
+      failed_when: home_dirs.rc > 1
+
+    - name: Copy default shell configuration files from /etc/skel/
+      # Recursively copies .bashrc, .profile, etc., to each AD user's home directory.
+      ansible.builtin.copy:
+        src: /etc/skel/
+        dest: "/home/{{ item }}/"
+        owner: "{{ item.split('@')[0] | default(item) }}"
+        group: "{{ item.split('@')[0] | default(item) }}"
+        mode: '0755'
+      loop: "{{ home_dirs.stdout_lines }}"
+      # The 'remote_src: yes' is important here to tell Ansible to copy from the remote server's
+      # /etc/skel (the source) to the remote server's /home/user/ (the destination).
+      remote_src: yes
