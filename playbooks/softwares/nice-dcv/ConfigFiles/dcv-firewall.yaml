@@ -1,0 +1,41 @@
+---
+- name: Configure DCV firewall settings
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure firewalld is installed
+      dnf:
+        name: firewalld
+        state: present
+
+    - name: Start and enable firewalld
+      systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Open DCV port 8443/tcp
+      firewalld:
+        port: 8443/tcp
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+    - name: Open DCV QUIC port 8443/udp
+      firewalld:
+        port: 8443/udp
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+    - name: Reload firewalld to apply changes
+      command: firewall-cmd --reload
+
+    - name: Verify open ports
+      command: firewall-cmd --list-ports
+      register: open_ports
+      changed_when: false
+
+    - name: Display open ports
+      debug:
+        msg: "Open ports: {{ open_ports.stdout }}"
