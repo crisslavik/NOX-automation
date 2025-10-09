@@ -154,16 +154,13 @@
         content: |
           #!/bin/bash
           # Fix home directory ownership for AD users
-          # This runs after oddjob creates the directory
           
           USER_HOME=$(eval echo ~$PAM_USER)
           
           if [ -d "$USER_HOME" ]; then
-              # Get the actual UID and GID of the user
               USER_UID=$(id -u "$PAM_USER")
               USER_GID=$(id -g "$PAM_USER")
               
-              # Fix ownership of the home directory itself if it's owned by root
               HOME_OWNER=$(stat -c '%U' "$USER_HOME")
               if [ "$HOME_OWNER" = "root" ]; then
                   chown "$USER_UID:$USER_GID" "$USER_HOME"
@@ -171,10 +168,7 @@
                   logger "Fixed home directory ownership for $PAM_USER"
               fi
               
-              # Ensure correct permissions on home directory
               chmod 700 "$USER_HOME"
-              
-              # Restore SELinux context
               restorecon -R "$USER_HOME" 2>/dev/null || true
           fi
           
@@ -191,26 +185,20 @@
           USER_HOME=$(eval echo ~$PAM_USER)
           
           if [ -d "$USER_HOME" ]; then
-              # Create .config directory if it doesn't exist
               if [ ! -d "$USER_HOME/.config" ]; then
                   mkdir -p "$USER_HOME/.config/dconf"
                   
-                  # Set ownership
                   USER_UID=$(id -u "$PAM_USER")
                   USER_GID=$(id -g "$PAM_USER")
                   chown -R "$USER_UID:$USER_GID" "$USER_HOME/.config"
                   
-                  # Set permissions
                   chmod 700 "$USER_HOME/.config"
                   chmod 700 "$USER_HOME/.config/dconf"
                   
-                  # Restore SELinux context
                   restorecon -R "$USER_HOME/.config" 2>/dev/null || true
-                  
                   logger "Created .config directory for $PAM_USER"
               fi
               
-              # Fix permissions if .config exists but is not writable
               if [ -d "$USER_HOME/.config" ] && [ ! -w "$USER_HOME/.config" ]; then
                   USER_UID=$(id -u "$PAM_USER")
                   USER_GID=$(id -g "$PAM_USER")
@@ -224,36 +212,6 @@
           exit 0
         dest: /usr/share/libpam-script/pam_script_config_setup.sh
         mode: '0755'
-
-    - name: Fix existing AD home directories ownership
-      ansible.builtin.shell: >
-        for user_dir in /home/{{ domain_name }}/*/; do
-          if [ -d "$user_dir" ]; then
-            username=$(basename "$user_dir");
-            home_owner=$(stat -c '%U' "$user_dir");
-            if [ "$home_owner" = "root" ]; then
-              user_uid=$(id -u "$username" 2>/dev/null);
-              user_gid=$(id -g "$username" 2>/dev/null);
-              if [ -n "$user_uid" ] && [ -n "$user_gid" ]; then
-                chown "$user_uid:$user_gid" "$user_dir";
-                chmod 700 "$user_dir";
-                restorecon -R "$user_dir" 2>/dev/null || true;
-                echo "Fixed ownership for $username";
-              fi;
-            fi;
-          fi;
-        done
-      args:
-        executable: /bin/bash
-      register: fix_homes_result
-      changed_when: "'Fixed ownership' in fix_homes_result.stdout"
-      when: ansible_facts['file']['/home/' + domain_name] is defined or true
-      ignore_errors: yes
-
-    - name: Display fixed home directories
-      ansible.builtin.debug:
-        msg: "{{ fix_homes_result.stdout_lines }}"
-      when: fix_homes_result.stdout_lines | length > 0
 
     - name: Add domain groups to sudoers
       ansible.builtin.lineinfile:
@@ -273,7 +231,7 @@
         line: "Domain = {{ domain_name }}"
         backup: yes
 
-    # Autofs configuration using DIRECT maps to avoid /mnt conflicts
+    # Autofs configuration using DIRECT maps
     - name: Configure autofs master map for direct mounts (no timeout)
       ansible.builtin.lineinfile:
         path: /etc/auto.master
@@ -283,10 +241,11 @@
         backup: yes
       notify: restart autofs
 
-    - name: Create autofs direct map file for public mounts
+    - name: Create autofs direct map file for public mounts ONLY
       ansible.builtin.copy:
         content: |
           # Public mounts (all users) - DIRECT MAP
+          # Admin mounts handled via PAM script
           {% for mount in nfs_mounts_public %}
           /mnt/{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
           {% endfor %}
@@ -322,18 +281,6 @@
         state: directory
       when: noxadmins_gid is defined
 
-    - name: Apply permissions recursively to Library (background task)
-      ansible.builtin.shell: |
-        nohup chown -R root:{{ noxadmins_gid }} /mnt/Library > /dev/null 2>&1 &
-        nohup chmod -R 2775 /mnt/Library > /dev/null 2>&1 &
-      args:
-        executable: /bin/bash
-      when: noxadmins_gid is defined
-      async: 7200
-      poll: 0
-      register: library_perms_job
-
-
     - name: Create script to add NFS bookmarks to GNOME Files
       ansible.builtin.copy:
         content: |
@@ -343,7 +290,6 @@
           USER_HOME=$(eval echo ~$PAM_USER)
           BOOKMARKS_FILE="$USER_HOME/.config/gtk-3.0/bookmarks"
           
-          # Create gtk-3.0 config directory if it doesn't exist
           mkdir -p "$USER_HOME/.config/gtk-3.0"
           
           # Add public mounts bookmarks for all users
@@ -364,7 +310,6 @@
               {% endfor %}
           fi
           
-          # Set correct ownership - use UID instead of group name to avoid space issues
           USER_UID=$(id -u "$PAM_USER")
           USER_GID=$(id -g "$PAM_USER")
           chown "$USER_UID:$USER_GID" "$BOOKMARKS_FILE"
@@ -375,32 +320,25 @@
         mode: '0755'
         backup: yes
 
-    - name: Create PAM session script for NOX Admins mounts and bookmarks
+    - name: Create PAM session script for admin mounts
       ansible.builtin.copy:
         content: |
           #!/bin/bash
           # This script runs when a user logs in
           
-          # Fix home directory ownership first (critical!)
           /usr/share/libpam-script/pam_script_homedir_fix.sh
-          
-          # Setup .config directory
           /usr/share/libpam-script/pam_script_config_setup.sh
           
-          # Check if user is member of "nox-admins" group (as seen by Linux)
+          # Mount admin shares if user is nox-admin
           if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
-              # Add NOX Admins mounts to auto.direct if not present (DIRECT MAP format)
               {% for mount in nfs_mounts_noxadmins %}
-              if ! grep -q "^/mnt/{{ mount.dest }}" /etc/auto.direct; then
-                  echo "/mnt/{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}" >> /etc/auto.direct
+              if ! mountpoint -q /mnt/{{ mount.dest }}; then
+                  mkdir -p /mnt/{{ mount.dest }} 2>/dev/null
+                  mount -t nfs -o rw {{ nfs_server }}:{{ mount.src }} /mnt/{{ mount.dest }} 2>/dev/null || true
               fi
               {% endfor %}
-              
-              # Reload autofs
-              systemctl reload autofs
           fi
           
-          # Add bookmarks to GNOME Files
           /usr/share/libpam-script/pam_script_bookmarks.sh
           
           exit 0
@@ -416,7 +354,7 @@
         state: present
         backup: yes
 
-    - name: Test NFS connectivity before mounting
+    - name: Test NFS connectivity
       ansible.builtin.command: "showmount -e {{ nfs_server }}"
       register: nfs_exports
       failed_when: false
@@ -435,12 +373,6 @@
     - name: Display final domain status
       ansible.builtin.debug:
         msg: "Domain join status: {{ 'SUCCESS' if domain_name in final_realm_status.stdout else 'FAILED' }}"
-
-    - name: Test domain user authentication (optional)
-      ansible.builtin.command: "id {{ domain_admin_user.split('@')[0] }}"
-      register: user_test
-      failed_when: false
-      changed_when: false
 
     - name: Reboot system to complete domain join
       ansible.builtin.reboot:
