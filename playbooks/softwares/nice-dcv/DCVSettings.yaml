@@ -44,3 +44,4 @@
 - import_playbook: ConfigFiles/dcv.yaml
 - import_playbook: ConfigFiles/default.perm.yaml
 - import_playbook: ConfigFiles/dcv.conf.yaml
+- import_playbook: ConfigFiles/dcv-firewall.yaml
