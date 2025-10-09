@@ -39,18 +39,25 @@
         path: "/tmp/{{ daselement_rpm_file }}"
         state: absent
     
-    - name: Create system-wide das-element defaults directory
-      ansible.builtin.file:
-        path: /etc/skel/.das-element
-        state: directory
-        mode: '0755'
-        
-    - name: Create default variables.env in /etc/skel for new users
+    - name: Create DasElement configuration wrapper script
       ansible.builtin.copy:
-        dest: /etc/skel/.das-element/variables.env
-        mode: '0644'
+        dest: /usr/local/bin/das-element-lite-wrapper.sh
+        mode: '0755'
         force: yes
         content: |
+          #!/bin/bash
+          # Auto-configure DasElement Lite before launch
+          
+          DASELEMENT_DIR="$HOME/.das-element"
+          VARIABLES_FILE="$DASELEMENT_DIR/variables.env"
+          
+          # Create directory if it doesn't exist
+          if [ ! -d "$DASELEMENT_DIR" ]; then
+              mkdir -p "$DASELEMENT_DIR"
+          fi
+          
+          # Always ensure variables.env is correct
+          cat > "$VARIABLES_FILE" << 'EOF'
           #### point to the license server
           DASELEMENT_LICENSE={{ daselement_license_server }}
           
@@ -59,6 +66,28 @@
           
           #### path to the resources folder, for presets, hooks, etc.
           DASELEMENT_RESOURCES={{ daselement_resources_path }}
+          EOF
+          
+          # Launch DasElement Lite with original binary
+          exec {{ daselement_install_path }}/das-element-lite-{{ daselement_lite_version }} "$@"
+    
+    - name: Find DasElement desktop launcher file
+      ansible.builtin.find:
+        paths:
+          - /usr/share/applications
+          - "{{ daselement_install_path }}"
+        patterns: '*das-element*.desktop'
+        recurse: yes
+      register: desktop_files
+      
+    - name: Update desktop launcher to use wrapper script
+      ansible.builtin.lineinfile:
+        path: "{{ item.path }}"
+        regexp: '^Exec='
+        line: 'Exec=/usr/local/bin/das-element-lite-wrapper.sh'
+        backup: yes
+      loop: "{{ desktop_files.files }}"
+      when: desktop_files.files | length > 0
         
     - name: Find all .das-element directories for existing users
       ansible.builtin.find:
