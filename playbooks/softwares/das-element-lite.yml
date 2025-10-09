@@ -39,6 +39,16 @@
         path: "/tmp/{{ daselement_rpm_file }}"
         state: absent
     
+    - name: Create system-wide DasElement environment variables
+      ansible.builtin.copy:
+        dest: /etc/profile.d/daselement.sh
+        mode: '0644'
+        force: yes
+        content: |
+          export DASELEMENT_LICENSE={{ daselement_license_server }}
+          export DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+          export DASELEMENT_RESOURCES={{ daselement_resources_path }}
+    
     - name: Create DasElement configuration wrapper script
       ansible.builtin.copy:
         dest: /usr/local/bin/das-element-lite-wrapper.sh
@@ -71,23 +81,41 @@
           # Launch DasElement Lite with original binary
           exec {{ daselement_install_path }}/das-element-lite-{{ daselement_lite_version }} "$@"
     
-    - name: Find DasElement desktop launcher file
+    - name: Find system-wide DasElement desktop launcher file
       ansible.builtin.find:
         paths:
           - /usr/share/applications
           - "{{ daselement_install_path }}"
         patterns: '*das-element*.desktop'
         recurse: yes
-      register: desktop_files
+      register: system_desktop_files
       
-    - name: Update desktop launcher to use wrapper script
+    - name: Update system desktop launcher to use wrapper script
       ansible.builtin.lineinfile:
         path: "{{ item.path }}"
         regexp: '^Exec='
         line: 'Exec=/usr/local/bin/das-element-lite-wrapper.sh'
         backup: yes
-      loop: "{{ desktop_files.files }}"
-      when: desktop_files.files | length > 0
+      loop: "{{ system_desktop_files.files }}"
+      when: system_desktop_files.files | length > 0
+    
+    - name: Find user-specific desktop launchers
+      ansible.builtin.find:
+        paths:
+          - /home
+          - /home/ad.noxvfx.com
+        patterns: '*das-element*.desktop'
+        recurse: yes
+      register: user_desktop_files
+      
+    - name: Update user desktop launchers to use wrapper script
+      ansible.builtin.lineinfile:
+        path: "{{ item.path }}"
+        regexp: '^Exec='
+        line: 'Exec=/usr/local/bin/das-element-lite-wrapper.sh'
+        backup: yes
+      loop: "{{ user_desktop_files.files }}"
+      when: user_desktop_files.files | length > 0
         
     - name: Find all .das-element directories for existing users
       ansible.builtin.find:
