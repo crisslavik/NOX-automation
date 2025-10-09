@@ -301,6 +301,39 @@
         state: started
         enabled: yes
 
+    # Set Library permissions for nox-admins write access
+    - name: Get nox-admins group GID
+      ansible.builtin.command: getent group nox-admins
+      register: noxadmins_group
+      changed_when: false
+      failed_when: false
+
+    - name: Extract nox-admins GID
+      ansible.builtin.set_fact:
+        noxadmins_gid: "{{ noxadmins_group.stdout.split(':')[2] }}"
+      when: noxadmins_group.rc == 0
+
+    - name: Set Library directory ownership for nox-admins write access
+      ansible.builtin.file:
+        path: /mnt/Library
+        owner: root
+        group: "{{ noxadmins_gid }}"
+        mode: '2775'
+        state: directory
+      when: noxadmins_gid is defined
+
+    - name: Apply permissions recursively to Library (background task)
+      ansible.builtin.shell: |
+        nohup chown -R root:{{ noxadmins_gid }} /mnt/Library > /dev/null 2>&1 &
+        nohup chmod -R 2775 /mnt/Library > /dev/null 2>&1 &
+      args:
+        executable: /bin/bash
+      when: noxadmins_gid is defined
+      async: 7200
+      poll: 0
+      register: library_perms_job
+
+
     - name: Create script to add NFS bookmarks to GNOME Files
       ansible.builtin.copy:
         content: |
