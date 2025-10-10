@@ -25,6 +25,9 @@
           - libglvnd-opengl        # Vendor-neutral OpenGL dispatch library (provides libOpenGL.so.0)
           - libglvnd-glx           # GLX support
         state: present
+      tags:
+        - install
+        - dependencies
 
     # Step 2: Install Nuke
     - name: Copy Nuke installer to target machine
@@ -32,11 +35,15 @@
         src: "{{ nuke_installer_path }}"
         dest: "/tmp/{{ nuke_installer }}"
         mode: '0755'
+      tags:
+        - install
 
     - name: Check if Nuke is already installed
       stat:
         path: "{{ nuke_executable }}"
       register: nuke_installed
+      tags:
+        - install
 
     - name: Install Nuke to /opt directory
       command: >
@@ -44,13 +51,17 @@
         --prefix={{ nuke_install_dir }}
         --accept-foundry-eula
       when: not nuke_installed.stat.exists
+      tags:
+        - install
 
     - name: Remove installer after installation
       file:
         path: "/tmp/{{ nuke_installer }}"
         state: absent
+      tags:
+        - install
 
-    # Step 3: Configure Environment Variables - System-wide
+    # Step 3: Configure Environment Variables - System-wide ONLY
     - name: Create Nuke environment configuration script
       copy:
         dest: /etc/profile.d/nuke.sh
@@ -59,14 +70,18 @@
           # Foundry Nuke Environment Configuration
           export foundry_LICENSE={{ foundry_license }}
           export NUKE_PATH={{ nuke_path }}
+      tags:
+        - config
+        - environment
 
-
-    # Step 5: Create GNOME Desktop Icons in /etc/skel
+    # Step 4: Create GNOME Desktop Icons in /etc/skel
     - name: Create .local/share/applications directory in /etc/skel
       file:
         path: /etc/skel/.local/share/applications
         state: directory
         mode: '0755'
+      tags:
+        - desktop
 
     - name: Create Nuke desktop entry in /etc/skel
       copy:
@@ -83,6 +98,8 @@
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
           MimeType=application/x-nuke;
+      tags:
+        - desktop
 
     - name: Create NukeX desktop entry in /etc/skel
       copy:
@@ -99,6 +116,8 @@
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
           MimeType=application/x-nuke;
+      tags:
+        - desktop
 
     - name: Create Nuke Studio desktop entry in /etc/skel
       copy:
@@ -115,8 +134,10 @@
           Terminal=false
           Categories=Graphics;2DGraphics;VFX;
           MimeType=application/x-nuke;
+      tags:
+        - desktop
 
-    # ADD THIS NEW STEP HERE (Step 5b):
+    # Step 5: Create login script to setup desktop icons for new users
     - name: Create login script to setup desktop icons for new users
       copy:
         dest: /etc/profile.d/setup-nuke-desktop.sh
@@ -147,6 +168,16 @@
         - config
 
     # Step 6: Deploy Desktop Icons to Existing AD Users
+    - name: Find all existing AD user home directories
+      find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_users
+      failed_when: false
+      tags:
+        - desktop
+
     - name: Create .local/share/applications for existing users
       file:
         path: "{{ item.path }}/.local/share/applications"
@@ -156,6 +187,8 @@
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files is defined and ad_users.files | length > 0
+      tags:
+        - desktop
 
     - name: Deploy Nuke desktop entry to existing users
       copy:
@@ -167,6 +200,8 @@
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files is defined and ad_users.files | length > 0
+      tags:
+        - desktop
 
     - name: Deploy NukeX desktop entry to existing users
       copy:
@@ -178,6 +213,8 @@
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files is defined and ad_users.files | length > 0
+      tags:
+        - desktop
 
     - name: Deploy Nuke Studio desktop entry to existing users
       copy:
@@ -189,6 +226,8 @@
         group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files is defined and ad_users.files | length > 0
+      tags:
+        - desktop
 
     - name: Update desktop database for existing users
       command: update-desktop-database {{ item.path }}/.local/share/applications
@@ -196,6 +235,8 @@
       when: ad_users.files is defined and ad_users.files | length > 0
       changed_when: false
       failed_when: false
+      tags:
+        - desktop
 
     # Step 7: Verification
     - name: Verify Nuke installation
@@ -206,6 +247,8 @@
       environment:
         foundry_LICENSE: "{{ foundry_license }}"
         NUKE_PATH: "{{ nuke_path }}"
+      tags:
+        - verify
 
     - name: Display installation result
       debug:
@@ -215,3 +258,5 @@
           Installation Path: {{ nuke_executable }}
           License Server: {{ foundry_license }}
           NUKE_PATH: {{ nuke_path }}
+      tags:
+        - verify
