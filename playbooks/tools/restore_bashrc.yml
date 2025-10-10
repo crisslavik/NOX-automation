@@ -1,0 +1,44 @@
+---
+- name: Restore default bashrc from /etc/skel
+  hosts: all
+  become: yes
+  
+  vars:
+    ad_home_base: "/home/ad.noxvfx.com"
+    
+  tasks:
+    - name: Find all existing AD user home directories
+      find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_users
+      failed_when: false
+
+    - name: Backup existing .bashrc files
+      copy:
+        src: "{{ item.path }}/.bashrc"
+        dest: "{{ item.path }}/.bashrc.backup.{{ ansible_date_time.epoch }}"
+        remote_src: yes
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+        mode: preserve
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+      ignore_errors: yes
+
+    - name: Copy clean .bashrc from /etc/skel
+      copy:
+        src: /etc/skel/.bashrc
+        dest: "{{ item.path }}/.bashrc"
+        remote_src: yes
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+        mode: '0644'
+        force: yes
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files is defined and ad_users.files | length > 0
+
+    - name: Display completion message
+      debug:
+        msg: "Restored default .bashrc for {{ ad_users.files | length }} users from /etc/skel. Backups saved with timestamp."
