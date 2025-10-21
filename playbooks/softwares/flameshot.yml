@@ -46,6 +46,13 @@
         state: present
         remote: flathub
 
+    # ====== FLATPAK PERMISSIONS FOR WAYLAND ======
+    - name: Grant Flameshot necessary permissions for Wayland
+      ansible.builtin.command:
+        cmd: flatpak override --system org.flameshot.Flameshot --filesystem=home --talk-name=org.freedesktop.Notifications
+      changed_when: false
+      failed_when: false
+
     # ====== CREATE WRAPPER SCRIPT ======
     - name: Create wrapper script
       ansible.builtin.copy:
@@ -157,6 +164,20 @@
         done
       ignore_errors: yes
 
+      # ====== FIX BROKEN KEYBOARD SHORTCUTS ======
+    - name: Reset broken custom-keybindings for existing users
+      ansible.builtin.shell: |
+        for user in $(ps aux | grep -v grep | grep gnome-shell | awk '{print $1}' | sort | uniq); do
+          if [ -n "$user" ] && [ "$user" != "gdm" ]; then
+            user_id=$(id -u "$user" 2>/dev/null)
+            if [ -n "$user_id" ] && [ -S "/run/user/$user_id/bus" ]; then
+              echo "Resetting keybindings for user: $user"
+              sudo -u "$user" DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$user_id/bus gsettings reset org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || true
+            fi
+          fi
+        done
+      ignore_errors: yes
+
     # ====== KEYBOARD SHORTCUTS ======
     - name: Create keyboard shortcuts configuration script
       ansible.builtin.copy:
@@ -169,22 +190,27 @@
                   export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
               fi
               
-              # Only disable the Print Screen key binding (not all screenshot shortcuts)
+              # Only disable the Print Screen key binding
               gsettings set org.gnome.shell.keybindings screenshot '[]' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys screenshot '[]' 2>/dev/null || true
               
-              # Get existing custom keybindings and preserve all non-flameshot ones
-              existing=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null | tr -d "[]'" | tr ',' '\n')
-              new_bindings="['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/'"
-              for binding in $existing; do
-                  if [ -n "$binding" ] && [[ ! "$binding" =~ flameshot ]]; then
-                      new_bindings="$new_bindings, '$binding'"
-                  fi
-              done
-              new_bindings="$new_bindings]"
+              # Add Flameshot custom shortcut (append, don't replace)
+              current=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null)
               
-              # Set Flameshot custom shortcut for Print Screen only
-              gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$new_bindings" 2>/dev/null || true
+              # Check if flameshot binding already exists
+              if [[ ! "$current" =~ "flameshot-gui" ]]; then
+                  # Remove closing bracket and add our binding
+                  if [ "$current" = "@as []" ] || [ "$current" = "[]" ]; then
+                      # Empty list, just add ours
+                      gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/']"
+                  else
+                      # Append to existing list
+                      new_list="${current%]}, '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/']"
+                      gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$new_list"
+                  fi
+              fi
+              
+              # Configure the Flameshot shortcut
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ name 'Flameshot Screenshot' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ command '/usr/local/bin/flameshot gui' 2>/dev/null || true
               gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot-gui/ binding 'Print' 2>/dev/null || true
@@ -229,6 +255,13 @@
           ✅ Installed via Flatpak
           ✅ Configured for AD users (/home/ad.noxvfx.com/)
           ✅ Print Screen key mapped to Flameshot
-          ✅ Screenshots saved to: ~/Pictures/Screenshots/
+          ✅ Screenshots saved to: ~/Pictures/Screenshots/YYYY-MM-DD/
+          ✅ Works on both X11 and Wayland
           
-          ⚠️ Users may need to logout/login for shortcuts to take effect
+          ⚠️ IMPORTANT: Users MUST logout and login for Print Screen shortcut to work!
+          
+          📋 Features:
+          • Print Screen: Opens Flameshot GUI
+          • Other GNOME shortcuts (Shift+Print, Alt+Print) remain available
+          • Auto-saves to dated folders
+          • Copies to clipboard automatically
