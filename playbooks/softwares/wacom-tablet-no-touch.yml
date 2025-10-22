@@ -1,0 +1,90 @@
+---
+- name: Disable Wacom Tablet Touch for All Users on AlmaLinux
+  hosts: workstations
+  become: yes
+  
+  vars:
+    home_base_path: "/home/ad.noxvfx.com"
+    
+  tasks:
+    - name: Create X11 xorg.conf.d directory if it doesn't exist
+      file:
+        path: /etc/X11/xorg.conf.d
+        state: directory
+        mode: '0755'
+
+    - name: Deploy X11 config to disable Wacom touch (system-wide)
+      copy:
+        content: |
+          Section "InputClass"
+              Identifier "Wacom touch disable"
+              MatchDriver "wacom"
+              MatchProduct "Finger"
+              Option "Ignore" "on"
+          EndSection
+        dest: /etc/X11/xorg.conf.d/99-wacom-no-touch.conf
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Get all existing user home directories
+      find:
+        paths: "{{ home_base_path }}"
+        file_type: directory
+        recurse: no
+      register: user_homes
+      when: home_base_path is exists
+
+    - name: Create autostart directory for all existing users
+      file:
+        path: "{{ item.path }}/.config/autostart"
+        state: directory
+        mode: '0755'
+        owner: "{{ item.path | basename }}"
+        group: "domain users"
+      loop: "{{ user_homes.files }}"
+      when: user_homes.files is defined
+
+    - name: Deploy autostart desktop file for all existing users
+      copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=Disable Wacom Touch
+          Comment=Disable Wacom tablet touch input
+          Exec=sh -c "sleep 5 && xinput disable 'Wacom Intuos Pro M Finger'"
+          Terminal=false
+          Hidden=false
+          NoDisplay=false
+          X-GNOME-Autostart-enabled=true
+        dest: "{{ item.path }}/.config/autostart/disable-wacom-touch.desktop"
+        mode: '0644'
+        owner: "{{ item.path | basename }}"
+        group: "domain users"
+      loop: "{{ user_homes.files }}"
+      when: user_homes.files is defined
+
+    - name: Create autostart directory in skeleton for new users
+      file:
+        path: /etc/skel/.config/autostart
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Deploy autostart desktop file to skeleton for new users
+      copy:
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=Disable Wacom Touch
+          Comment=Disable Wacom tablet touch input
+          Exec=sh -c "sleep 5 && xinput disable 'Wacom Intuos Pro M Finger'"
+          Terminal=false
+          Hidden=false
+          NoDisplay=false
+          X-GNOME-Autostart-enabled=true
+        dest: /etc/skel/.config/autostart/disable-wacom-touch.desktop
+        mode: '0644'
+        owner: root
+        group: root
