@@ -1,6 +1,6 @@
 ---
 - name: Disable Wacom Tablet Touch for All Users on AlmaLinux
-  hosts: workstations
+  hosts: all
   become: yes
   
   vars:
