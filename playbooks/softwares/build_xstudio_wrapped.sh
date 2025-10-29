@@ -129,8 +129,11 @@ print_success "Build tools installed"
 
 print_section "Creating Installation Structure"
 
+# Create directories with sudo (owned by root initially)
 sudo mkdir -p ${XSTUDIO_INSTALL_PATH}/{bin,lib,include,share,python,qt}
-sudo chown -R $(whoami):$(whoami) ${XSTUDIO_INSTALL_PATH}
+
+# Make writable by current user during build
+sudo chmod -R 777 ${XSTUDIO_INSTALL_PATH}
 
 # Set environment for building INTO the install directory
 export PREFIX=${XSTUDIO_INSTALL_PATH}
@@ -642,3 +645,24 @@ SUMMARY
 print_info "Build directory: ${TMP_BUILD_DIR}"
 print_info "You can clean up build directory if needed:"
 print_info "  rm -rf ${TMP_BUILD_DIR}"
+
+###############################################################################
+# Set Final Permissions for Multi-User AD Environment
+###############################################################################
+
+print_section "Setting Final Permissions for All Users"
+
+# Set ownership to root (system-wide)
+sudo chown -R root:root ${XSTUDIO_INSTALL_PATH}
+
+# Make readable and executable by all users
+# u=rwX (owner can read, write, execute)
+# g=rX (group can read and execute)
+# o=rX (others can read and execute)
+sudo chmod -R u=rwX,g=rX,o=rX ${XSTUDIO_INSTALL_PATH}
+
+# Ensure all binaries are executable
+sudo find ${XSTUDIO_INSTALL_PATH}/bin -type f -exec chmod +x {} \;
+sudo find ${XSTUDIO_INSTALL_PATH}/qt/bin -type f -exec chmod +x {} \;
+
+print_success "Permissions set for all domain users"
