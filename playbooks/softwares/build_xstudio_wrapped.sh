@@ -280,25 +280,29 @@ if [ ! -f "${PREFIX}/lib/libGLEW.so" ]; then
     print_success "GLEW installed"
 fi
 
-# nlohmann JSON
+# nlohmann JSON - ADD error handling
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/include/nlohmann/json.hpp" ]; then
+    rm -f v${VER_NLOHMANN}.tar.gz  # Use variable, not hardcoded
     wget https://github.com/nlohmann/json/archive/refs/tags/v${VER_NLOHMANN}.tar.gz
     tar -xf v${VER_NLOHMANN}.tar.gz
     cd json-${VER_NLOHMANN}
+    rm -rf build
     mkdir build && cd build
     cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DJSON_BuildTests=Off
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}  # Return to base dir
     print_success "nlohmann JSON installed"
 fi
 
-# OpenEXR
+# OpenEXR - FIX the check
 cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/libOpenEXR.so" ]; then
+if [ ! -d "${PREFIX}/include/OpenEXR" ]; then  # Changed from lib check
     git clone https://github.com/AcademySoftwareFoundation/openexr.git
     cd openexr
     git checkout ${VER_OPENEXR}
+    rm -rf build
     mkdir build && cd build
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
@@ -306,6 +310,7 @@ if [ ! -f "${PREFIX}/lib/libOpenEXR.so" ]; then
         -DBUILD_TESTING=Off
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "OpenEXR installed"
 fi
 
@@ -327,12 +332,14 @@ if [ ! -f "${PREFIX}/lib/libcaf_core.so" ]; then
     print_success "ActorFramework installed"
 fi
 
-# OpenColorIO
+# OpenColorIO - ADD explicit cd
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libOpenColorIO.so" ]; then
+    rm -f v${VER_OCIO2}.tar.gz
     wget https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v${VER_OCIO2}.tar.gz
     tar -xf v${VER_OCIO2}.tar.gz
-    cd OpenColorIO-${VER_OCIO2}
+    cd OpenColorIO-${VER_OCIO2}  # Explicit cd
+    rm -rf build
     mkdir build && cd build
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
@@ -341,28 +348,34 @@ if [ ! -f "${PREFIX}/lib/libOpenColorIO.so" ]; then
         -DOCIO_BUILD_GPU_TESTS=OFF
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "OpenColorIO installed"
 fi
 
-# SPDLOG
+# SPDLOG - ADD explicit cd
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libspdlog.so" ]; then
+    rm -f v${VER_SPDLOG}.tar.gz
     wget https://github.com/gabime/spdlog/archive/refs/tags/v${VER_SPDLOG}.tar.gz
     tar -xf v${VER_SPDLOG}.tar.gz
-    cd spdlog-${VER_SPDLOG}
+    cd spdlog-${VER_SPDLOG}  # Explicit cd
+    rm -rf build
     mkdir build && cd build
     cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DSPDLOG_BUILD_SHARED=On
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "SPDLOG installed"
 fi
 
-# FMTLIB
+# FMTLIB - ADD explicit cd
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libfmt.so" ]; then
+    rm -f ${VER_FMTLIB}.tar.gz
     wget https://github.com/fmtlib/fmt/archive/refs/tags/${VER_FMTLIB}.tar.gz
     tar -xf ${VER_FMTLIB}.tar.gz
-    cd fmt-${VER_FMTLIB}
+    cd fmt-${VER_FMTLIB}  # Explicit cd
+    rm -rf build
     mkdir build && cd build
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
@@ -371,6 +384,7 @@ if [ ! -f "${PREFIX}/lib/libfmt.so" ]; then
         -DFMT_TEST=Off
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "FMTLIB installed"
 fi
 
@@ -442,12 +456,13 @@ if [ ! -f "${PREFIX}/lib/libfdk-aac.so" ]; then
     make install
 fi
 
-# FFmpeg
+# FFmpeg - ADD explicit cd
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
+    rm -f ffmpeg-${VER_FFMPEG}.tar.bz2
     wget https://ffmpeg.org/releases/ffmpeg-${VER_FFMPEG}.tar.bz2
     tar -xf ffmpeg-${VER_FFMPEG}.tar.bz2
-    cd ffmpeg-${VER_FFMPEG}
+    cd ffmpeg-${VER_FFMPEG}  # Already there, but explicit
     ./configure \
         --prefix=${PREFIX} \
         --extra-libs=-lpthread \
@@ -463,6 +478,7 @@ if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
         --disable-vulkan
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "FFmpeg installed"
 fi
 
