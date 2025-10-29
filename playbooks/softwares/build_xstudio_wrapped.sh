@@ -332,20 +332,23 @@ if [ ! -f "${PREFIX}/lib/libcaf_core.so" ]; then
     print_success "ActorFramework installed"
 fi
 
-# OpenColorIO - ADD explicit cd
+# OpenColorIO
 cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/libOpenColorIO.so" ]; then
+if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
     rm -f v${VER_OCIO2}.tar.gz
     wget https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v${VER_OCIO2}.tar.gz
     tar -xf v${VER_OCIO2}.tar.gz
-    cd OpenColorIO-${VER_OCIO2}  # Explicit cd
+    cd OpenColorIO-${VER_OCIO2}
     rm -rf build
     mkdir build && cd build
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOCIO_BUILD_APPS=OFF \
         -DOCIO_BUILD_TESTS=OFF \
-        -DOCIO_BUILD_GPU_TESTS=OFF
+        -DOCIO_BUILD_GPU_TESTS=OFF \
+        -DPython_EXECUTABLE=${PREFIX}/bin/python3.9 \
+        -DPython_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
+        -DPython_LIBRARY=${PREFIX}/python/lib/libpython3.9.so
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
