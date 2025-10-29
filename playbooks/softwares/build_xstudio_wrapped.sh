@@ -129,20 +129,23 @@ print_success "Build tools installed"
 
 print_section "Creating Installation Structure"
 
-# Create directories with sudo (owned by root initially)
+# Create directories with sudo
 sudo mkdir -p ${XSTUDIO_INSTALL_PATH}/{bin,lib,include,share,python,qt}
 
-# Make writable by current user during build
-sudo chmod -R 777 ${XSTUDIO_INSTALL_PATH}
+# Make OWNED by current user (so builds can write without sudo)
+sudo chown -R $(id -u):$(id -g) ${XSTUDIO_INSTALL_PATH}
 
-# Set environment for building INTO the install directory
+# Make writable
+sudo chmod -R 755 ${XSTUDIO_INSTALL_PATH}
+
+# Set environment
 export PREFIX=${XSTUDIO_INSTALL_PATH}
 export PATH=${PREFIX}/bin:$PATH
 export LD_LIBRARY_PATH=${PREFIX}/lib:$LD_LIBRARY_PATH
 export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH
 export CMAKE_PREFIX_PATH=${PREFIX}
 
-print_success "Installation structure created"
+print_success "Installation structure created (owned by build user)"
 
 ###############################################################################
 # Build Python 3.9 (bundled)
