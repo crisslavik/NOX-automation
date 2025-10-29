@@ -195,40 +195,44 @@ else
 fi
 
 ###############################################################################
-# Build Qt 6.5.3 (bundled) - CRITICAL for isolation
+# Install Pre-built Qt 6.5.3 (bundled)
 ###############################################################################
 
-print_section "Building Qt ${VER_QT} (bundled)"
+print_section "Installing Pre-built Qt ${VER_QT} (bundled)"
 
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/qt/bin/qmake" ]; then
-    print_warning "Qt 6.5.3 build takes 2-4 hours and requires significant resources"
-    print_info "Alternative: Download pre-built Qt from qt.io and extract to ${PREFIX}/qt/"
-    read -p "Build Qt from source? (y/N): " -n 1 -r
+    print_info "Downloading pre-built Qt 6.5.3..."
+    print_warning "This requires Qt account (free). Get it from: https://login.qt.io/register"
+    
+    # Option A: Manual download (recommended)
+    print_info "Please download Qt 6.5.3 for Linux from: https://www.qt.io/download-qt-installer"
+    print_info "After downloading, extract to: ${PREFIX}/qt/"
+    print_info ""
+    print_info "Or continue with automated download (requires aqt tool)..."
+    read -p "Install aqt and download automatically? (y/N): " -n 1 -r
     echo
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # Download Qt source
-        wget https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz
-        tar -xf qt-everywhere-src-6.5.3.tar.xz
-        cd qt-everywhere-src-6.5.3
+        # Install aqt (Another Qt Installer)
+        ${PREFIX}/bin/pip3 install aqtinstall
         
-        ./configure \
-            -prefix ${PREFIX}/qt \
-            -opensource -confirm-license \
-            -nomake examples -nomake tests \
-            -skip qtwebengine \
-            -release
+        # Download Qt 6.5.3 for Linux (gcc_64)
+        ${PREFIX}/bin/aqt install-qt linux desktop 6.5.3 gcc_64 \
+            --outputdir ${PREFIX}/qt \
+            -m qtcharts qtdatavis3d qtmultimedia qtnetworkauth \
+            qtpositioning qtquick3d qtquicktimeline qtshadertools \
+            qtsvg qtvirtualkeyboard qtwayland qtwebsockets
         
-        cmake --build . --parallel ${JOBS}
-        cmake --install .
+        # Reorganize directory structure
+        mv ${PREFIX}/qt/6.5.3/gcc_64/* ${PREFIX}/qt/
+        rm -rf ${PREFIX}/qt/6.5.3
         
-        print_success "Qt ${VER_QT} built and installed"
+        print_success "Qt ${VER_QT} downloaded and installed"
     else
-        print_warning "Skipping Qt build"
-        print_info "Please manually install Qt 6.5.3 to: ${PREFIX}/qt/"
-        print_info "Download from: https://www.qt.io/download-qt-installer"
-        exit 0
+        print_error "Qt installation required to continue"
+        print_info "Download Qt 6.5.3 and extract to: ${PREFIX}/qt/"
+        exit 1
     fi
 else
     print_info "Qt already installed"
