@@ -195,51 +195,68 @@ else
 fi
 
 ###############################################################################
-# Install Pre-built Qt 6.5.3 (bundled)
+# Install System Qt6 Packages and Bundle Into xStudio
 ###############################################################################
 
-print_section "Installing Pre-built Qt ${VER_QT} (bundled)"
+print_section "Installing and Bundling Qt6 ${VER_QT}"
 
-cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/qt/bin/qmake" ]; then
-    print_info "Downloading pre-built Qt 6.5.3..."
-    print_warning "This requires Qt account (free). Get it from: https://login.qt.io/register"
+# Install system Qt6 packages
+print_info "Installing system Qt6 packages..."
+sudo dnf install -y \
+    qt6-qtbase-devel qt6-qtbase-gui \
+    qt6-qtdeclarative-devel qt6-qttools-devel \
+    qt6-qtsvg-devel qt6-qtwayland-devel \
+    qt6-qt5compat-devel qt6-qtmultimedia-devel \
+    qt6-qtnetworkauth-devel qt6-qtwebsockets-devel
+
+print_success "System Qt6 packages installed"
+
+# Copy system Qt6 into xStudio's bundled location
+if [ ! -f "${PREFIX}/qt/bin/qmake6" ]; then
+    print_info "Copying Qt6 libraries into xStudio bundle..."
     
-    # Option A: Manual download (recommended)
-    print_info "Please download Qt 6.5.3 for Linux from: https://www.qt.io/download-qt-installer"
-    print_info "After downloading, extract to: ${PREFIX}/qt/"
-    print_info ""
-    print_info "Or continue with automated download (requires aqt tool)..."
-    read -p "Install aqt and download automatically? (y/N): " -n 1 -r
-    echo
+    # Create Qt directory structure
+    mkdir -p ${PREFIX}/qt/{bin,lib,plugins,qml,libexec}
     
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # Install aqt (Another Qt Installer)
-        ${PREFIX}/bin/pip3 install aqtinstall
-        
-        # Download Qt 6.5.3 for Linux (gcc_64)
-        ${PREFIX}/bin/aqt install-qt linux desktop 6.5.3 gcc_64 \
-            --outputdir ${PREFIX}/qt \
-            -m qtcharts qtdatavis3d qtmultimedia qtnetworkauth \
-            qtpositioning qtquick3d qtquicktimeline qtshadertools \
-            qtsvg qtvirtualkeyboard qtwayland qtwebsockets
-        
-        # Reorganize directory structure
-        mv ${PREFIX}/qt/6.5.3/gcc_64/* ${PREFIX}/qt/
-        rm -rf ${PREFIX}/qt/6.5.3
-        
-        print_success "Qt ${VER_QT} downloaded and installed"
-    else
-        print_error "Qt installation required to continue"
-        print_info "Download Qt 6.5.3 and extract to: ${PREFIX}/qt/"
-        exit 1
-    fi
+    # Copy Qt6 binaries
+    cp -a /usr/lib64/qt6/bin/* ${PREFIX}/qt/bin/ 2>/dev/null || true
+    cp -a /usr/bin/qmake6 ${PREFIX}/qt/bin/ 2>/dev/null || true
+    cp -a /usr/bin/moc-qt6 ${PREFIX}/qt/bin/ 2>/dev/null || true
+    cp -a /usr/bin/rcc-qt6 ${PREFIX}/qt/bin/ 2>/dev/null || true
+    cp -a /usr/bin/uic-qt6 ${PREFIX}/qt/bin/ 2>/dev/null || true
+    
+    # Copy Qt6 libraries
+    cp -a /usr/lib64/libQt6*.so* ${PREFIX}/qt/lib/ 2>/dev/null || true
+    cp -a /usr/lib64/qt6/lib/* ${PREFIX}/qt/lib/ 2>/dev/null || true
+    
+    # Copy Qt6 plugins
+    cp -a /usr/lib64/qt6/plugins/* ${PREFIX}/qt/plugins/ 2>/dev/null || true
+    
+    # Copy Qt6 QML modules
+    cp -a /usr/lib64/qt6/qml/* ${PREFIX}/qt/qml/ 2>/dev/null || true
+    
+    # Copy Qt6 libexec
+    cp -a /usr/lib64/qt6/libexec/* ${PREFIX}/qt/libexec/ 2>/dev/null || true
+    
+    # Create cmake files for Qt6
+    mkdir -p ${PREFIX}/qt/lib/cmake
+    cp -a /usr/lib64/cmake/Qt6* ${PREFIX}/qt/lib/cmake/ 2>/dev/null || true
+    
+    # Fix any broken symlinks
+    find ${PREFIX}/qt -type l -xtype l -delete 2>/dev/null || true
+    
+    print_success "Qt6 bundled into ${PREFIX}/qt/"
 else
-    print_info "Qt already installed"
+    print_info "Qt6 already bundled"
 fi
 
-export CMAKE_PREFIX_PATH=${PREFIX}/qt:${CMAKE_PREFIX_PATH}
+# Set environment to use bundled Qt6
+export CMAKE_PREFIX_PATH=${PREFIX}/qt/lib/cmake:${CMAKE_PREFIX_PATH}
 export PATH=${PREFIX}/qt/bin:$PATH
+export LD_LIBRARY_PATH=${PREFIX}/qt/lib:$LD_LIBRARY_PATH
+
+print_success "Qt6 ready for xStudio build"
+
 
 ###############################################################################
 # Build All Dependencies (into PREFIX)
