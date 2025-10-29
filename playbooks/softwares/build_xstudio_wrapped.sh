@@ -296,9 +296,11 @@ if [ ! -f "${PREFIX}/include/nlohmann/json.hpp" ]; then
     print_success "nlohmann JSON installed"
 fi
 
-# OpenEXR - FIX the check
+# OpenEXR - FIXED VERSION
 cd ${TMP_BUILD_DIR}
-if [ ! -d "${PREFIX}/include/OpenEXR" ]; then  # Changed from lib check
+if [ ! -d "${PREFIX}/include/OpenEXR" ]; then
+    rm -rf openexr  # Add cleanup
+    
     git clone https://github.com/AcademySoftwareFoundation/openexr.git
     cd openexr
     git checkout ${VER_OPENEXR}
@@ -314,12 +316,16 @@ if [ ! -d "${PREFIX}/include/OpenEXR" ]; then  # Changed from lib check
     print_success "OpenEXR installed"
 fi
 
-# ActorFramework
+# ActorFramework - FIXED VERSION
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libcaf_core.so" ]; then
+    # Clean up if exists
+    rm -rf actor-framework
+    
     git clone https://github.com/actor-framework/actor-framework
     cd actor-framework
     git checkout ${VER_ACTOR}
+    rm -rf build
     mkdir build && cd build
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
@@ -329,18 +335,22 @@ if [ ! -f "${PREFIX}/lib/libcaf_core.so" ]; then
         -DCAF_ENABLE_TOOLS=OFF
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "ActorFramework installed"
 fi
 
 # OpenColorIO
 cd ${TMP_BUILD_DIR}
 if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
+    rm -rf OpenColorIO-${VER_OCIO2}  # Clean up
     rm -f v${VER_OCIO2}.tar.gz
+    
     wget https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v${VER_OCIO2}.tar.gz
     tar -xf v${VER_OCIO2}.tar.gz
     cd OpenColorIO-${VER_OCIO2}
     rm -rf build
     mkdir build && cd build
+    
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOCIO_BUILD_APPS=OFF \
@@ -349,6 +359,7 @@ if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
         -DPython_EXECUTABLE=${PREFIX}/bin/python3.9 \
         -DPython_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
         -DPython_LIBRARY=${PREFIX}/python/lib/libpython3.9.so
+    
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
@@ -391,21 +402,27 @@ if [ ! -f "${PREFIX}/lib/libfmt.so" ]; then
     print_success "FMTLIB installed"
 fi
 
-# OpenTimelineIO
+# OpenTimelineIO - FIXED VERSION
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libopentime.so" ]; then
+    rm -rf OpenTimelineIO  # Add cleanup
+    
     git clone https://github.com/AcademySoftwareFoundation/OpenTimelineIO.git
     cd OpenTimelineIO
     git checkout ${VER_OpenTimelineIO}
+    rm -rf build
     mkdir build && cd build
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOTIO_PYTHON_INSTALL=ON \
         -DOTIO_DEPENDENCIES_INSTALL=OFF \
         -DOTIO_FIND_IMATH=ON \
-        -DPython3_EXECUTABLE=${PREFIX}/bin/python3.9
+        -DPython3_EXECUTABLE=${PREFIX}/bin/python3.9 \
+        -DPython3_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
+        -DPython3_LIBRARY=${PREFIX}/python/lib/libpython3.9.so
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
     print_success "OpenTimelineIO installed"
 fi
 
@@ -423,15 +440,18 @@ if ! command -v nasm &> /dev/null; then
     make install
 fi
 
-# x264
+# x264 - FIXED VERSION
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libx264.so" ]; then
+    rm -rf x264  # Add cleanup
+    
     git clone --branch ${VER_x264} --depth 1 https://code.videolan.org/videolan/x264.git || \
     git clone --branch ${VER_x264} --depth 1 https://github.com/mirror/x264.git
     cd x264
     ./configure --prefix=${PREFIX} --enable-shared --enable-pic
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
 fi
 
 # x265
@@ -448,15 +468,18 @@ if [ ! -f "${PREFIX}/lib/libx265.so" ]; then
     make install
 fi
 
-# FDK-AAC
+# fdk-aac - FIXED VERSION
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libfdk-aac.so" ]; then
+    rm -rf fdk-aac  # Add cleanup
+    
     git clone --depth 1 https://github.com/mstorsjo/fdk-aac
     cd fdk-aac
     autoreconf -fiv
     ./configure --prefix=${PREFIX} --enable-shared
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
 fi
 
 # FFmpeg - ADD explicit cd
