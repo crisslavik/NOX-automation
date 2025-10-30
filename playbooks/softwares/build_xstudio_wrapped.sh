@@ -436,9 +436,6 @@ if [ ! -f "${PREFIX}/lib/libopentime.so" ]; then
     print_success "OpenTimelineIO installed"
 fi
 
-# FFmpeg (with codec support)
-cd ${TMP_BUILD_DIR}
-
 # NASM
 if ! command -v nasm &> /dev/null; then
     wget https://www.nasm.us/pub/nasm/releasebuilds/${VER_NASM}/nasm-${VER_NASM}.tar.bz2
@@ -492,13 +489,17 @@ if [ ! -f "${PREFIX}/lib/libfdk-aac.so" ]; then
     cd ${TMP_BUILD_DIR}
 fi
 
-# FFmpeg - ADD explicit cd
+# FFmpeg
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
     rm -f ffmpeg-${VER_FFMPEG}.tar.bz2
     wget https://ffmpeg.org/releases/ffmpeg-${VER_FFMPEG}.tar.bz2
     tar -xf ffmpeg-${VER_FFMPEG}.tar.bz2
-    cd ffmpeg-${VER_FFMPEG}  # Already there, but explicit
+    cd ffmpeg-${VER_FFMPEG}
+    
+    # Make sure PKG_CONFIG_PATH includes bundled libs
+    export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:$PKG_CONFIG_PATH
+    
     ./configure \
         --prefix=${PREFIX} \
         --extra-libs=-lpthread \
