@@ -489,6 +489,19 @@ if [ ! -f "${PREFIX}/lib/libfdk-aac.so" ]; then
     cd ${TMP_BUILD_DIR}
 fi
 
+# Freetype (required by FFmpeg)
+cd ${TMP_BUILD_DIR}
+if [ ! -f "${PREFIX}/lib/pkgconfig/freetype2.pc" ] && [ ! -f "${PREFIX}/lib64/pkgconfig/freetype2.pc" ]; then
+    wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
+    tar -xf freetype-2.13.2.tar.gz
+    cd freetype-2.13.2
+    ./configure --prefix=${PREFIX}
+    make -j${JOBS}
+    make install
+    cd ${TMP_BUILD_DIR}
+    print_success "Freetype installed"
+fi
+
 # FFmpeg
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
@@ -497,8 +510,11 @@ if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
     tar -xf ffmpeg-${VER_FFMPEG}.tar.bz2
     cd ffmpeg-${VER_FFMPEG}
     
-    # Make sure PKG_CONFIG_PATH includes bundled libs
-    export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:$PKG_CONFIG_PATH
+    # CRITICAL: Export PKG_CONFIG_PATH pointing to bundled libraries
+    export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:/usr/lib64/pkgconfig:$PKG_CONFIG_PATH
+    
+    # Debug: verify freetype is found
+    pkg-config --modversion freetype2
     
     ./configure \
         --prefix=${PREFIX} \
@@ -513,10 +529,25 @@ if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
         --enable-nonfree \
         --enable-pic \
         --disable-vulkan
+    
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
     print_success "FFmpeg installed"
+fi
+
+# pybind11 (if xStudio still requires it)
+cd ${TMP_BUILD_DIR}
+if [ ! -f "${PREFIX}/include/pybind11/pybind11.h" ]; then
+    git clone https://github.com/pybind/pybind11.git
+    cd pybind11
+    git checkout v2.11.1
+    mkdir build && cd build
+    ${PREFIX}/bin/cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX}
+    make -j${JOBS}
+    make install
+    cd ${TMP_BUILD_DIR}
+    print_success "pybind11 installed"
 fi
 
 ###############################################################################
