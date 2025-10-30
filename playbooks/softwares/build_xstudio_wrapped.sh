@@ -402,16 +402,17 @@ if [ ! -f "${PREFIX}/lib/libfmt.so" ]; then
     print_success "FMTLIB installed"
 fi
 
-# OpenTimelineIO - FIXED VERSION
+# OpenTimelineIO
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libopentime.so" ]; then
-    rm -rf OpenTimelineIO  # Add cleanup
+    rm -rf OpenTimelineIO
     
     git clone https://github.com/AcademySoftwareFoundation/OpenTimelineIO.git
     cd OpenTimelineIO
     git checkout ${VER_OpenTimelineIO}
     rm -rf build
     mkdir build && cd build
+    
     cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOTIO_PYTHON_INSTALL=ON \
@@ -420,6 +421,7 @@ if [ ! -f "${PREFIX}/lib/libopentime.so" ]; then
         -DPython3_EXECUTABLE=${PREFIX}/bin/python3.9 \
         -DPython3_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
         -DPython3_LIBRARY=${PREFIX}/python/lib/libpython3.9.so
+    
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
