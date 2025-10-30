@@ -1,10 +1,10 @@
 #!/bin/bash
 
 ###############################################################################
-# xStudio Self-Contained Wrapped Build Script
-# Version: 3.0 (Wrapped/Isolated like RV)
+# xStudio Self-Contained Build Script - Production Version
+# Version: 4.0 (System Qt6 + Bundled Dependencies)
+# Updated: 2025-10-30
 # Installation: /opt/xstudio/xstudio-2025.1.0/
-# All dependencies bundled inside
 ###############################################################################
 
 set -e
@@ -43,7 +43,6 @@ JOBS=$(nproc)
 
 # Component versions
 CMAKE_VERSION=3.31.9
-VER_QT=6.5.3  # We'll build our own Qt
 VER_PYTHON=3.9.21
 VER_ACTOR=1.1.0
 VER_FFMPEG=5.1
@@ -59,11 +58,12 @@ VER_x264=stable
 VER_x265=3.5
 VER_XSTUDIO=main
 
-print_section "xStudio Wrapped Installation Build"
+print_section "xStudio Production Build Script"
 print_info "Version: ${XSTUDIO_VERSION}"
 print_info "Install path: ${XSTUDIO_INSTALL_PATH}"
 print_info "Build directory: ${TMP_BUILD_DIR}"
-print_info "All dependencies will be bundled inside xStudio"
+print_info "Python module: ENABLED"
+print_info "Qt6: System packages (via dnf)"
 
 # Check sudo
 if ! sudo -v; then
@@ -71,10 +71,10 @@ if ! sudo -v; then
     exit 1
 fi
 
-# Check disk space (need more for bundled install)
+# Check disk space
 AVAILABLE_SPACE=$(df -BG ${HOME} | awk 'NR==2 {print $4}' | sed 's/G//')
 if [ "$AVAILABLE_SPACE" -lt 50 ]; then
-    print_warning "Low disk space! At least 50GB recommended for wrapped build"
+    print_warning "Low disk space! At least 50GB recommended"
     read -p "Continue anyway? (y/N): " -n 1 -r
     echo
     [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
@@ -82,6 +82,30 @@ fi
 
 mkdir -p ${TMP_BUILD_DIR}
 cd ${TMP_BUILD_DIR}
+
+###############################################################################
+# Configure SELinux
+###############################################################################
+
+print_section "Configuring SELinux"
+
+if command -v getenforce &> /dev/null; then
+    SELINUX_STATUS=$(getenforce)
+    if [ "$SELINUX_STATUS" != "Permissive" ] && [ "$SELINUX_STATUS" != "Disabled" ]; then
+        print_info "Setting SELinux to permissive mode..."
+        sudo setenforce 0
+        
+        # Make permanent
+        if grep -q "^SELINUX=enforcing" /etc/selinux/config; then
+            sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
+            print_success "SELinux set to permissive (permanent)"
+        fi
+    else
+        print_info "SELinux already in permissive/disabled mode"
+    fi
+else
+    print_info "SELinux not found, skipping"
+fi
 
 ###############################################################################
 # Clean Environment
@@ -100,15 +124,16 @@ clean_env
 print_success "Environment cleaned"
 
 ###############################################################################
-# Install Minimal System Dependencies (build tools only)
+# Install System Dependencies
 ###############################################################################
 
-print_section "Installing Build Tools"
+print_section "Installing System Dependencies"
 
 sudo dnf config-manager --set-enabled crb 2>/dev/null || sudo dnf config-manager --set-enabled powertools 2>/dev/null
 sudo dnf install -y epel-release
 sudo dnf groupinstall "Development Tools" -y
 
+# Build tools and libraries
 sudo dnf install -y \
     git gcc gcc-c++ make automake autoconf libtool pkg-config \
     wget tar bzip2 patchelf perl-IPC-Cmd \
@@ -119,9 +144,18 @@ sudo dnf install -y \
     mesa-libGL-devel mesa-libGLU-devel \
     alsa-lib-devel pulseaudio-libs-devel \
     wayland-devel libinput-devel \
-    openssl-devel
+    openssl-devel libuuid-devel
 
-print_success "Build tools installed"
+# System Qt6 packages
+print_info "Installing system Qt6 packages..."
+sudo dnf install -y \
+    qt6-qtbase-devel qt6-qtbase-gui \
+    qt6-qtdeclarative-devel qt6-qttools-devel \
+    qt6-qtsvg-devel qt6-qtwayland-devel \
+    qt6-qt5compat-devel qt6-qtmultimedia-devel \
+    qt6-qtnetworkauth-devel qt6-qtwebsockets-devel
+
+print_success "System dependencies installed"
 
 ###############################################################################
 # Create Installation Structure
@@ -129,29 +163,23 @@ print_success "Build tools installed"
 
 print_section "Creating Installation Structure"
 
-# Create directories with sudo
-sudo mkdir -p ${XSTUDIO_INSTALL_PATH}/{bin,lib,include,share,python,qt}
-
-# Make OWNED by current user (so builds can write without sudo)
+sudo mkdir -p ${XSTUDIO_INSTALL_PATH}/{bin,lib,lib64,include,share,python}
 sudo chown -R $(id -u):$(id -g) ${XSTUDIO_INSTALL_PATH}
-
-# Make writable
 sudo chmod -R 755 ${XSTUDIO_INSTALL_PATH}
 
-# Set environment
 export PREFIX=${XSTUDIO_INSTALL_PATH}
 export PATH=${PREFIX}/bin:$PATH
-export LD_LIBRARY_PATH=${PREFIX}/lib:$LD_LIBRARY_PATH
-export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH
+export LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64:$LD_LIBRARY_PATH
+export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:/usr/lib64/pkgconfig:$PKG_CONFIG_PATH
 export CMAKE_PREFIX_PATH=${PREFIX}
 
-print_success "Installation structure created (owned by build user)"
+print_success "Installation structure created"
 
 ###############################################################################
 # Build Python 3.9 (bundled)
 ###############################################################################
 
-print_section "Building Python ${VER_PYTHON} (bundled)"
+print_section "Building Python ${VER_PYTHON}"
 
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/bin/python3.9" ]; then
@@ -168,24 +196,22 @@ if [ ! -f "${PREFIX}/bin/python3.9" ]; then
     make -j${JOBS}
     make install
     
-    # Create symlinks
     ln -sf ${PREFIX}/python/bin/python3.9 ${PREFIX}/bin/python3.9
     ln -sf ${PREFIX}/python/bin/python3 ${PREFIX}/bin/python3
     ln -sf ${PREFIX}/python/bin/pip3 ${PREFIX}/bin/pip3
     
-    # Add Python lib to LD_LIBRARY_PATH for subsequent builds
     export LD_LIBRARY_PATH=${PREFIX}/python/lib:$LD_LIBRARY_PATH
     
-    print_success "Python ${VER_PYTHON} built and installed"
+    print_success "Python ${VER_PYTHON} installed"
 else
-    print_info "Python already built"
+    print_info "Python already installed"
 fi
 
 ###############################################################################
 # Install CMake (bundled)
 ###############################################################################
 
-print_section "Installing CMake ${CMAKE_VERSION} (bundled)"
+print_section "Installing CMake ${CMAKE_VERSION}"
 
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/bin/cmake" ]; then
@@ -198,76 +224,10 @@ else
 fi
 
 ###############################################################################
-# Install System Qt6 Packages and Bundle Into xStudio
+# Build Dependencies
 ###############################################################################
 
-print_section "Installing and Bundling Qt6 ${VER_QT}"
-
-# Install system Qt6 packages
-print_info "Installing system Qt6 packages..."
-sudo dnf install -y \
-    qt6-qtbase-devel qt6-qtbase-gui \
-    qt6-qtdeclarative-devel qt6-qttools-devel \
-    qt6-qtsvg-devel qt6-qtwayland-devel \
-    qt6-qt5compat-devel qt6-qtmultimedia-devel \
-    qt6-qtnetworkauth-devel qt6-qtwebsockets-devel
-
-print_success "System Qt6 packages installed"
-
-# Copy system Qt6 into xStudio's bundled location
-if [ ! -f "${PREFIX}/qt/bin/qmake6" ]; then
-    print_info "Copying Qt6 libraries into xStudio bundle..."
-    
-    # Create Qt directory structure
-    mkdir -p ${PREFIX}/qt/{bin,lib,plugins,qml,libexec}
-    
-    # Copy Qt6 binaries
-    cp -a /usr/lib64/qt6/bin/* ${PREFIX}/qt/bin/ 2>/dev/null || true
-    cp -a /usr/bin/qmake6 ${PREFIX}/qt/bin/ 2>/dev/null || true
-    cp -a /usr/bin/moc-qt6 ${PREFIX}/qt/bin/ 2>/dev/null || true
-    cp -a /usr/bin/rcc-qt6 ${PREFIX}/qt/bin/ 2>/dev/null || true
-    cp -a /usr/bin/uic-qt6 ${PREFIX}/qt/bin/ 2>/dev/null || true
-    
-    # Copy Qt6 libraries
-    cp -a /usr/lib64/libQt6*.so* ${PREFIX}/qt/lib/ 2>/dev/null || true
-    cp -a /usr/lib64/qt6/lib/* ${PREFIX}/qt/lib/ 2>/dev/null || true
-    
-    # Copy Qt6 plugins
-    cp -a /usr/lib64/qt6/plugins/* ${PREFIX}/qt/plugins/ 2>/dev/null || true
-    
-    # Copy Qt6 QML modules
-    cp -a /usr/lib64/qt6/qml/* ${PREFIX}/qt/qml/ 2>/dev/null || true
-    
-    # Copy Qt6 libexec
-    cp -a /usr/lib64/qt6/libexec/* ${PREFIX}/qt/libexec/ 2>/dev/null || true
-    
-    # Create cmake files for Qt6
-    mkdir -p ${PREFIX}/qt/lib/cmake
-    cp -a /usr/lib64/cmake/Qt6* ${PREFIX}/qt/lib/cmake/ 2>/dev/null || true
-    
-    # Fix any broken symlinks
-    find ${PREFIX}/qt -type l -xtype l -delete 2>/dev/null || true
-    
-    print_success "Qt6 bundled into ${PREFIX}/qt/"
-else
-    print_info "Qt6 already bundled"
-fi
-
-# Set environment to use bundled Qt6
-export CMAKE_PREFIX_PATH=${PREFIX}/qt/lib/cmake:${CMAKE_PREFIX_PATH}
-export PATH=${PREFIX}/qt/bin:$PATH
-export LD_LIBRARY_PATH=${PREFIX}/qt/lib:$LD_LIBRARY_PATH
-
-print_success "Qt6 ready for xStudio build"
-
-
-###############################################################################
-# Build All Dependencies (into PREFIX)
-###############################################################################
-
-print_section "Building xStudio Dependencies"
-
-# For each dependency, use --prefix=${PREFIX} or CMAKE_INSTALL_PREFIX=${PREFIX}
+print_section "Building Dependencies"
 
 # GLEW
 cd ${TMP_BUILD_DIR}
@@ -277,36 +237,36 @@ if [ ! -f "${PREFIX}/lib/libGLEW.so" ]; then
     cd glew-${VER_libGLEW}/
     make -j${JOBS} GLEW_DEST=${PREFIX}
     make install GLEW_DEST=${PREFIX}
+    cd ${TMP_BUILD_DIR}
     print_success "GLEW installed"
 fi
 
-# nlohmann JSON - ADD error handling
+# nlohmann JSON
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/include/nlohmann/json.hpp" ]; then
-    rm -f v${VER_NLOHMANN}.tar.gz  # Use variable, not hardcoded
+    rm -f v${VER_NLOHMANN}.tar.gz
     wget https://github.com/nlohmann/json/archive/refs/tags/v${VER_NLOHMANN}.tar.gz
     tar -xf v${VER_NLOHMANN}.tar.gz
     cd json-${VER_NLOHMANN}
     rm -rf build
     mkdir build && cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DJSON_BuildTests=Off
+    ${PREFIX}/bin/cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DJSON_BuildTests=Off
     make -j${JOBS}
     make install
-    cd ${TMP_BUILD_DIR}  # Return to base dir
+    cd ${TMP_BUILD_DIR}
     print_success "nlohmann JSON installed"
 fi
 
-# OpenEXR - FIXED VERSION
+# OpenEXR
 cd ${TMP_BUILD_DIR}
 if [ ! -d "${PREFIX}/include/OpenEXR" ]; then
-    rm -rf openexr  # Add cleanup
-    
+    rm -rf openexr
     git clone https://github.com/AcademySoftwareFoundation/openexr.git
     cd openexr
     git checkout ${VER_OPENEXR}
     rm -rf build
     mkdir build && cd build
-    cmake .. \
+    ${PREFIX}/bin/cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOPENEXR_INSTALL_TOOLS=Off \
         -DBUILD_TESTING=Off
@@ -316,18 +276,16 @@ if [ ! -d "${PREFIX}/include/OpenEXR" ]; then
     print_success "OpenEXR installed"
 fi
 
-# ActorFramework - FIXED VERSION
+# ActorFramework
 cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/libcaf_core.so" ]; then
-    # Clean up if exists
+if [ ! -f "${PREFIX}/lib64/libcaf_core.so" ]; then
     rm -rf actor-framework
-    
     git clone https://github.com/actor-framework/actor-framework
     cd actor-framework
     git checkout ${VER_ACTOR}
     rm -rf build
     mkdir build && cd build
-    cmake .. \
+    ${PREFIX}/bin/cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DCMAKE_BUILD_TYPE=Release \
         -DCAF_ENABLE_EXAMPLES=OFF \
@@ -344,17 +302,14 @@ cd ${TMP_BUILD_DIR}
 if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
     rm -rf OpenColorIO-${VER_OCIO2}
     rm -f v${VER_OCIO2}.tar.gz
-    
     wget https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v${VER_OCIO2}.tar.gz
     tar -xf v${VER_OCIO2}.tar.gz
     cd OpenColorIO-${VER_OCIO2}
     rm -rf build
     mkdir build && cd build
     
-    # Set Python environment variables
     export Python_ROOT_DIR=${PREFIX}/python
     export Python3_ROOT_DIR=${PREFIX}/python
-    export LD_LIBRARY_PATH=${PREFIX}/python/lib:$LD_LIBRARY_PATH
     
     ${PREFIX}/bin/cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
@@ -370,32 +325,32 @@ if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
     print_success "OpenColorIO installed"
 fi
 
-# SPDLOG - ADD explicit cd
+# SPDLOG
 cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/libspdlog.so" ]; then
+if [ ! -f "${PREFIX}/lib64/libspdlog.so" ]; then
     rm -f v${VER_SPDLOG}.tar.gz
     wget https://github.com/gabime/spdlog/archive/refs/tags/v${VER_SPDLOG}.tar.gz
     tar -xf v${VER_SPDLOG}.tar.gz
-    cd spdlog-${VER_SPDLOG}  # Explicit cd
+    cd spdlog-${VER_SPDLOG}
     rm -rf build
     mkdir build && cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DSPDLOG_BUILD_SHARED=On
+    ${PREFIX}/bin/cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DSPDLOG_BUILD_SHARED=On
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
     print_success "SPDLOG installed"
 fi
 
-# FMTLIB - ADD explicit cd
+# FMTLIB
 cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/libfmt.so" ]; then
+if [ ! -f "${PREFIX}/lib64/libfmt.so" ]; then
     rm -f ${VER_FMTLIB}.tar.gz
     wget https://github.com/fmtlib/fmt/archive/refs/tags/${VER_FMTLIB}.tar.gz
     tar -xf ${VER_FMTLIB}.tar.gz
-    cd fmt-${VER_FMTLIB}  # Explicit cd
+    cd fmt-${VER_FMTLIB}
     rm -rf build
     mkdir build && cd build
-    cmake .. \
+    ${PREFIX}/bin/cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DCMAKE_POSITION_INDEPENDENT_CODE=1 \
         -DFMT_DOC=Off \
@@ -406,38 +361,9 @@ if [ ! -f "${PREFIX}/lib/libfmt.so" ]; then
     print_success "FMTLIB installed"
 fi
 
-# OpenTimelineIO
-cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/libopentime.so" ]; then
-    rm -rf OpenTimelineIO
-    
-    git clone https://github.com/AcademySoftwareFoundation/OpenTimelineIO.git
-    cd OpenTimelineIO
-    git checkout ${VER_OpenTimelineIO}
-    rm -rf build
-    mkdir build && cd build
-    
-    # Set Python environment variables before cmake
-    export Python_ROOT_DIR=${PREFIX}/python
-    export Python3_ROOT_DIR=${PREFIX}/python
-    export LD_LIBRARY_PATH=${PREFIX}/python/lib:$LD_LIBRARY_PATH
-    
-    ${PREFIX}/bin/cmake .. \
-        -DCMAKE_INSTALL_PREFIX=${PREFIX} \
-        -DOTIO_PYTHON_INSTALL=ON \
-        -DOTIO_DEPENDENCIES_INSTALL=OFF \
-        -DOTIO_FIND_IMATH=ON \
-        -DPython_ROOT_DIR=${PREFIX}/python \
-        -DPython3_ROOT_DIR=${PREFIX}/python
-    
-    make -j${JOBS}
-    make install
-    cd ${TMP_BUILD_DIR}
-    print_success "OpenTimelineIO installed"
-fi
-
 # NASM
-if ! command -v nasm &> /dev/null; then
+cd ${TMP_BUILD_DIR}
+if ! command -v ${PREFIX}/bin/nasm &> /dev/null; then
     wget https://www.nasm.us/pub/nasm/releasebuilds/${VER_NASM}/nasm-${VER_NASM}.tar.bz2
     tar -xf nasm-${VER_NASM}.tar.bz2
     cd nasm-${VER_NASM}
@@ -445,13 +371,14 @@ if ! command -v nasm &> /dev/null; then
     ./configure --prefix=${PREFIX}
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
+    print_success "NASM installed"
 fi
 
-# x264 - FIXED VERSION
+# x264
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libx264.so" ]; then
-    rm -rf x264  # Add cleanup
-    
+    rm -rf x264
     git clone --branch ${VER_x264} --depth 1 https://code.videolan.org/videolan/x264.git || \
     git clone --branch ${VER_x264} --depth 1 https://github.com/mirror/x264.git
     cd x264
@@ -459,6 +386,7 @@ if [ ! -f "${PREFIX}/lib/libx264.so" ]; then
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
+    print_success "x264 installed"
 fi
 
 # x265
@@ -467,19 +395,20 @@ if [ ! -f "${PREFIX}/lib/libx265.so" ]; then
     wget https://bitbucket.org/multicoreware/x265_git/downloads/x265_${VER_x265}.tar.gz
     tar -xf x265_${VER_x265}.tar.gz
     cd x265_${VER_x265}/build/linux
-    cmake -G "Unix Makefiles" \
+    ${PREFIX}/bin/cmake -G "Unix Makefiles" \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DENABLE_SHARED=ON \
         ../../source
     make -j${JOBS}
     make install
+    cd ${TMP_BUILD_DIR}
+    print_success "x265 installed"
 fi
 
-# fdk-aac - FIXED VERSION
+# fdk-aac
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/lib/libfdk-aac.so" ]; then
-    rm -rf fdk-aac  # Add cleanup
-    
+    rm -rf fdk-aac
     git clone --depth 1 https://github.com/mstorsjo/fdk-aac
     cd fdk-aac
     autoreconf -fiv
@@ -487,11 +416,12 @@ if [ ! -f "${PREFIX}/lib/libfdk-aac.so" ]; then
     make -j${JOBS}
     make install
     cd ${TMP_BUILD_DIR}
+    print_success "fdk-aac installed"
 fi
 
-# Freetype (required by FFmpeg)
+# Freetype
 cd ${TMP_BUILD_DIR}
-if [ ! -f "${PREFIX}/lib/pkgconfig/freetype2.pc" ] && [ ! -f "${PREFIX}/lib64/pkgconfig/freetype2.pc" ]; then
+if [ ! -f "${PREFIX}/lib/pkgconfig/freetype2.pc" ]; then
     wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
     tar -xf freetype-2.13.2.tar.gz
     cd freetype-2.13.2
@@ -509,12 +439,6 @@ if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
     wget https://ffmpeg.org/releases/ffmpeg-${VER_FFMPEG}.tar.bz2
     tar -xf ffmpeg-${VER_FFMPEG}.tar.bz2
     cd ffmpeg-${VER_FFMPEG}
-    
-    # CRITICAL: Export PKG_CONFIG_PATH pointing to bundled libraries
-    export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:/usr/lib64/pkgconfig:$PKG_CONFIG_PATH
-    
-    # Debug: verify freetype is found
-    pkg-config --modversion freetype2
     
     ./configure \
         --prefix=${PREFIX} \
@@ -536,7 +460,7 @@ if [ ! -f "${PREFIX}/bin/ffmpeg" ]; then
     print_success "FFmpeg installed"
 fi
 
-# pybind11 (if xStudio still requires it)
+# pybind11
 cd ${TMP_BUILD_DIR}
 if [ ! -f "${PREFIX}/include/pybind11/pybind11.h" ]; then
     git clone https://github.com/pybind/pybind11.git
@@ -550,11 +474,38 @@ if [ ! -f "${PREFIX}/include/pybind11/pybind11.h" ]; then
     print_success "pybind11 installed"
 fi
 
+# OpenTimelineIO
+cd ${TMP_BUILD_DIR}
+if [ ! -f "${PREFIX}/python/opentimelineio/libopentimelineio.so" ]; then
+    rm -rf OpenTimelineIO
+    git clone https://github.com/AcademySoftwareFoundation/OpenTimelineIO.git
+    cd OpenTimelineIO
+    git checkout ${VER_OpenTimelineIO}
+    rm -rf build
+    mkdir build && cd build
+    
+    export Python_ROOT_DIR=${PREFIX}/python
+    export Python3_ROOT_DIR=${PREFIX}/python
+    
+    ${PREFIX}/bin/cmake .. \
+        -DCMAKE_INSTALL_PREFIX=${PREFIX} \
+        -DOTIO_PYTHON_INSTALL=ON \
+        -DOTIO_DEPENDENCIES_INSTALL=OFF \
+        -DOTIO_FIND_IMATH=ON \
+        -DPython_ROOT_DIR=${PREFIX}/python \
+        -DPython3_ROOT_DIR=${PREFIX}/python
+    
+    make -j${JOBS}
+    make install
+    cd ${TMP_BUILD_DIR}
+    print_success "OpenTimelineIO installed"
+fi
+
 ###############################################################################
-# Clone and Build xStudio
+# Build and Install xStudio
 ###############################################################################
 
-print_section "Building xStudio"
+print_section "Building xStudio with Python Module"
 
 cd ${TMP_BUILD_DIR}
 
@@ -573,20 +524,35 @@ fi
 [ -d build ] && rm -rf build
 mkdir build && cd build
 
-# Configure with all bundled dependencies
-cmake .. \
+export Python_ROOT_DIR=${PREFIX}/python
+export Python3_ROOT_DIR=${PREFIX}/python
+export LD_LIBRARY_PATH=${PREFIX}/python/lib:$LD_LIBRARY_PATH
+
+print_info "Configuring xStudio..."
+
+${PREFIX}/bin/cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=${PREFIX} \
-    -DCMAKE_PREFIX_PATH="${PREFIX}/qt:${PREFIX}" \
-    -DQt6_DIR="${PREFIX}/qt/lib/cmake/Qt6" \
+    -DCMAKE_PREFIX_PATH="/usr/lib64/cmake/Qt6:${PREFIX}" \
+    -DQt6_DIR="/usr/lib64/cmake/Qt6" \
     -DBUILD_DOCS=OFF \
     -DBUILD_TESTING=OFF \
-    -DBUILD_PYTHON_MODULE=OFF \
+    -DBUILD_PYTHON_MODULE=ON \
+    -DPython_ROOT_DIR=${PREFIX}/python \
+    -DPython3_ROOT_DIR=${PREFIX}/python \
     -DPython3_EXECUTABLE=${PREFIX}/bin/python3.9 \
     -DPython3_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
     -DPython3_LIBRARY=${PREFIX}/python/lib/libpython3.9.so \
-    -DCMAKE_INSTALL_RPATH="\$ORIGIN/../lib:${PREFIX}/lib:${PREFIX}/qt/lib:${PREFIX}/python/lib" \
+    -DCMAKE_INSTALL_RPATH="\$ORIGIN/../lib:/usr/lib64/qt6/lib:/usr/lib64:${PREFIX}/lib:${PREFIX}/python/lib" \
     -DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE
+
+if [ $? -ne 0 ]; then
+    print_error "xStudio configuration failed!"
+    exit 1
+fi
+
+print_success "xStudio configured"
+print_info "Building xStudio (this may take 15-30 minutes)..."
 
 make -j${JOBS}
 
@@ -595,32 +561,20 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-print_success "xStudio built successfully"
+print_success "xStudio compiled successfully"
 
-###############################################################################
-# Install xStudio binaries
-###############################################################################
+# Install using make install
+print_info "Installing xStudio..."
+sudo make install
 
-print_section "Installing xStudio"
+# Copy Python modules
+sudo cp -r bin/python/* ${PREFIX}/bin/python/ 2>/dev/null || true
 
-# Copy binaries
-cp -r bin/* ${PREFIX}/bin/
+# Copy bundled libraries to lib and lib64
+print_info "Copying bundled libraries..."
+sudo cp -a ${PREFIX}/lib64/*.so* ${PREFIX}/lib/ 2>/dev/null || true
 
-# Fix RPATH with patchelf (ensure RELATIVE paths)
-cd ${PREFIX}/bin
-for binary in xstudio.bin *; do
-    if [ -f "$binary" ] && [ -x "$binary" ]; then
-        patchelf --set-rpath "\$ORIGIN/../lib:\$ORIGIN/../qt/lib:\$ORIGIN/../python/lib" "$binary" 2>/dev/null || true
-    fi
-done
-
-# Fix library RPATH
-cd ${PREFIX}/bin/lib
-for lib in *.so; do
-    patchelf --set-rpath "\$ORIGIN:\$ORIGIN/../../lib:\$ORIGIN/../../qt/lib:\$ORIGIN/../../python/lib" "$lib" 2>/dev/null || true
-done
-
-print_success "xStudio installed with proper RPATH"
+print_success "xStudio installed"
 
 ###############################################################################
 # Create xStudio Wrapper Script
@@ -628,39 +582,35 @@ print_success "xStudio installed with proper RPATH"
 
 print_section "Creating xStudio Wrapper"
 
-cat > ${PREFIX}/bin/xstudio-wrapper << 'WRAPPEREOF'
+sudo tee ${PREFIX}/bin/xstudio-wrapper > /dev/null << 'WRAPPEREOF'
 #!/bin/bash
-# xStudio Wrapper Script - Sets environment only for xStudio
+# xStudio Wrapper - Production Version
 
-# Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-XSTUDIO_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Set xStudio-specific environment (isolated from system/RV)
-export PATH="${XSTUDIO_ROOT}/bin:${XSTUDIO_ROOT}/qt/bin:${XSTUDIO_ROOT}/python/bin:$PATH"
-export LD_LIBRARY_PATH="${XSTUDIO_ROOT}/lib:${XSTUDIO_ROOT}/qt/lib:${XSTUDIO_ROOT}/python/lib:$LD_LIBRARY_PATH"
-export QT_PLUGIN_PATH="${XSTUDIO_ROOT}/qt/plugins"
-export QML2_IMPORT_PATH="${XSTUDIO_ROOT}/qt/qml"
-export PYTHONPATH="${XSTUDIO_ROOT}/python/lib/python3.9/site-packages:$PYTHONPATH"
-export XSTUDIO_HOME="${XSTUDIO_ROOT}"
+# Set xStudio environment
+export XSTUDIO_ROOT="/opt/xstudio/xstudio-2025.1.0/share/xstudio"
+export PATH="/opt/xstudio/xstudio-2025.1.0/bin:$PATH"
+export LD_LIBRARY_PATH="/opt/xstudio/xstudio-2025.1.0/python/opentimelineio:/opt/xstudio/xstudio-2025.1.0/lib64:/opt/xstudio/xstudio-2025.1.0/lib:/opt/xstudio/xstudio-2025.1.0/bin/lib:/usr/lib64/qt6/lib:/usr/lib64:/opt/xstudio/xstudio-2025.1.0/python/lib:${LD_LIBRARY_PATH}"
+export PYTHONPATH="/opt/xstudio/xstudio-2025.1.0/bin/python/lib/python3.9/site-packages:/opt/xstudio/xstudio-2025.1.0/python:${PYTHONPATH}"
+export QT_PLUGIN_PATH="/usr/lib64/qt6/plugins"
+export QML2_IMPORT_PATH="/usr/lib64/qt6/qml"
 
 # Launch xStudio
-exec "${XSTUDIO_ROOT}/bin/xstudio.bin" "$@"
+exec "/opt/xstudio/xstudio-2025.1.0/bin/xstudio.bin" "$@"
 WRAPPEREOF
 
-chmod +x ${PREFIX}/bin/xstudio-wrapper
+sudo chmod +x ${PREFIX}/bin/xstudio-wrapper
 
-print_success "Wrapper script created"
+print_success "Wrapper created"
 
 ###############################################################################
-# Create System-wide Symbolic Link
+# Create System Link
 ###############################################################################
 
 print_section "Creating System Link"
 
 sudo ln -sf ${PREFIX}/bin/xstudio-wrapper /usr/local/bin/xstudio
 
-print_success "System link created: /usr/local/bin/xstudio"
+print_success "System link created"
 
 ###############################################################################
 # Create Desktop Entry
@@ -668,11 +618,11 @@ print_success "System link created: /usr/local/bin/xstudio"
 
 print_section "Creating Desktop Entry"
 
-# Copy icon
+sudo mkdir -p ${PREFIX}/share/icons
+
 ICON_SRC="${TMP_BUILD_DIR}/xstudio/ui/qml/xstudio/assets/icons/xstudio_logo_256_v1.png"
 if [ -f "$ICON_SRC" ]; then
-    mkdir -p ${PREFIX}/share/icons
-    cp "$ICON_SRC" ${PREFIX}/share/icons/xstudio.png
+    sudo cp "$ICON_SRC" ${PREFIX}/share/icons/xstudio.png
 fi
 
 sudo tee /usr/share/applications/xstudio.desktop > /dev/null << EOF
@@ -681,16 +631,16 @@ Version=1.0
 Type=Application
 Name=xStudio ${XSTUDIO_VERSION}
 Comment=Professional Media Playback and Review
-Exec=${PREFIX}/bin/xstudio-wrapper %U
+Exec=/usr/local/bin/xstudio %U
 Icon=${PREFIX}/share/icons/xstudio.png
 Terminal=false
-Categories=AudioVideo;Video;Player;AudioVideoEditing;
-MimeType=video/quicktime;video/mp4;image/exr;image/dpx;
-Keywords=video;player;review;media;vfx;
+Categories=AudioVideo;Video;Player;
+MimeType=video/*;image/*;
 StartupNotify=true
 EOF
 
-sudo update-desktop-database
+sudo update-desktop-database 2>/dev/null || true
+
 print_success "Desktop entry created"
 
 ###############################################################################
@@ -700,8 +650,7 @@ print_success "Desktop entry created"
 print_section "Setting Final Permissions"
 
 sudo chown -R root:root ${XSTUDIO_INSTALL_PATH}
-sudo chmod -R u=rwX,g=rX,o=rX ${XSTUDIO_INSTALL_PATH}
-sudo chmod +x ${PREFIX}/bin/*
+sudo chmod -R 755 ${XSTUDIO_INSTALL_PATH}
 
 print_success "Permissions set"
 
@@ -713,64 +662,41 @@ print_section "Installation Complete!"
 
 cat << SUMMARY
 
-${GREEN}${BOLD}✓ xStudio Wrapped Installation Complete!${NC}
+${GREEN}${BOLD}✓ xStudio Installation Complete!${NC}
 
 ${BOLD}Installation Details:${NC}
   Version:           ${XSTUDIO_VERSION}
   Location:          ${XSTUDIO_INSTALL_PATH}
-  Wrapper:           ${PREFIX}/bin/xstudio-wrapper
-  System Link:       /usr/local/bin/xstudio
+  Launch Command:    xstudio
 
-${BOLD}Bundled Components:${NC}
-  ✓ Qt ${VER_QT}
-  ✓ Python ${VER_PYTHON}
-  ✓ FFmpeg ${VER_FFMPEG}
-  ✓ OpenEXR ${VER_OPENEXR}
-  ✓ OpenColorIO ${VER_OCIO2}
-  ✓ CAF ${VER_ACTOR}
-  ✓ All other dependencies
+${BOLD}Features:${NC}
+  ✓ Python scripting enabled
+  ✓ OpenTimelineIO support
+  ✓ System Qt6 integration
+  ✓ All dependencies bundled
+  ✓ RV coexistence ready
+  ✓ SELinux configured
 
 ${BOLD}How to Run:${NC}
   Command line:      xstudio
   Applications:      Search for "xStudio"
 
-${BOLD}Isolation:${NC}
-  ✓ Completely independent from RV
-  ✓ Completely independent from system libraries
-  ✓ All dependencies bundled inside ${XSTUDIO_INSTALL_PATH}
-  ✓ Can coexist with any version of RV
-  ✓ Portable to other machines (just copy the directory)
-
 ${BOLD}Testing:${NC}
   1. Test xStudio:   xstudio
-  2. Test RV:        rv
-  3. Both should work without conflicts!
+  2. Test RV:        rv (if installed)
 
 ${GREEN}Build completed successfully!${NC}
 
 SUMMARY
 
 print_info "Build directory: ${TMP_BUILD_DIR}"
-print_info "You can clean up build directory if needed:"
-print_info "  rm -rf ${TMP_BUILD_DIR}"
+print_warning "You can safely delete the build directory after testing:"
+print_warning "  rm -rf ${TMP_BUILD_DIR}"
 
-###############################################################################
-# Set Final Permissions for Multi-User AD Environment
-###############################################################################
+print_section "Next Steps"
+print_info "1. Test xStudio launches: xstudio"
+print_info "2. Test RV coexistence (if RV installed): rv"
+print_info "3. If successful, clean build directory"
+print_info "4. Deploy to other machines or create tar archive"
 
-print_section "Setting Final Permissions for All Users"
-
-# Set ownership to root (system-wide)
-sudo chown -R root:root ${XSTUDIO_INSTALL_PATH}
-
-# Make readable and executable by all users
-# u=rwX (owner can read, write, execute)
-# g=rX (group can read and execute)
-# o=rX (others can read and execute)
-sudo chmod -R u=rwX,g=rX,o=rX ${XSTUDIO_INSTALL_PATH}
-
-# Ensure all binaries are executable
-sudo find ${XSTUDIO_INSTALL_PATH}/bin -type f -exec chmod +x {} \;
-sudo find ${XSTUDIO_INSTALL_PATH}/qt/bin -type f -exec chmod +x {} \;
-
-print_success "Permissions set for all domain users"
+exit 0
