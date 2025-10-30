@@ -342,7 +342,7 @@ fi
 # OpenColorIO
 cd ${TMP_BUILD_DIR}
 if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
-    rm -rf OpenColorIO-${VER_OCIO2}  # Clean up
+    rm -rf OpenColorIO-${VER_OCIO2}
     rm -f v${VER_OCIO2}.tar.gz
     
     wget https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v${VER_OCIO2}.tar.gz
@@ -351,14 +351,18 @@ if [ ! -d "${PREFIX}/include/OpenColorIO" ]; then
     rm -rf build
     mkdir build && cd build
     
-    cmake .. \
+    # Set Python environment variables
+    export Python_ROOT_DIR=${PREFIX}/python
+    export Python3_ROOT_DIR=${PREFIX}/python
+    export LD_LIBRARY_PATH=${PREFIX}/python/lib:$LD_LIBRARY_PATH
+    
+    ${PREFIX}/bin/cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOCIO_BUILD_APPS=OFF \
         -DOCIO_BUILD_TESTS=OFF \
         -DOCIO_BUILD_GPU_TESTS=OFF \
-        -DPython_EXECUTABLE=${PREFIX}/bin/python3.9 \
-        -DPython_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
-        -DPython_LIBRARY=${PREFIX}/python/lib/libpython3.9.so
+        -DPython_ROOT_DIR=${PREFIX}/python \
+        -DPython3_ROOT_DIR=${PREFIX}/python
     
     make -j${JOBS}
     make install
@@ -413,14 +417,18 @@ if [ ! -f "${PREFIX}/lib/libopentime.so" ]; then
     rm -rf build
     mkdir build && cd build
     
-    cmake .. \
+    # Set Python environment variables before cmake
+    export Python_ROOT_DIR=${PREFIX}/python
+    export Python3_ROOT_DIR=${PREFIX}/python
+    export LD_LIBRARY_PATH=${PREFIX}/python/lib:$LD_LIBRARY_PATH
+    
+    ${PREFIX}/bin/cmake .. \
         -DCMAKE_INSTALL_PREFIX=${PREFIX} \
         -DOTIO_PYTHON_INSTALL=ON \
         -DOTIO_DEPENDENCIES_INSTALL=OFF \
         -DOTIO_FIND_IMATH=ON \
-        -DPython3_EXECUTABLE=${PREFIX}/bin/python3.9 \
-        -DPython3_INCLUDE_DIR=${PREFIX}/python/include/python3.9 \
-        -DPython3_LIBRARY=${PREFIX}/python/lib/libpython3.9.so
+        -DPython_ROOT_DIR=${PREFIX}/python \
+        -DPython3_ROOT_DIR=${PREFIX}/python
     
     make -j${JOBS}
     make install
