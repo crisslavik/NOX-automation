@@ -10,7 +10,7 @@
     nuke_installer_path: "../../files/{{ nuke_installer }}"
     nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
     nuke_executable: "{{ nuke_install_path }}/Nuke16.0"
-    foundry_license: "5053@license"
+    foundry_license: "24101@license"
     nuke_path: "/mnt/Library/_nox-nuke13"
     ad_home_base: "/home/ad.noxvfx.com"
     
@@ -64,11 +64,12 @@
     # Step 3: Configure Environment Variables - System-wide ONLY
     - name: Create Nuke environment configuration script
       copy:
-        dest: /etc/profile.d/nuke.sh
+        dest: /etc/profile.d/nuke16.sh
         mode: '0644'
         content: |
           # Foundry Nuke Environment Configuration
           export foundry_LICENSE={{ foundry_license }}
+          export PATH=/opt/Nuke16.0v6:$PATH
           export NUKE_PATH={{ nuke_path }}
       tags:
         - config
