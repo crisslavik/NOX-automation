@@ -1,0 +1,179 @@
+---
+- name: Install Foundry Nuke 16.0v6 with ShotGrid Integration
+  hosts: all
+  become: yes
+  
+  vars:
+    nuke_version: "16.0v6"
+    nuke_install_dir: "/opt"
+    nuke_installer: "Nuke{{ nuke_version }}-linux-x86_64.run"
+    nuke_installer_path: "../../files/{{ nuke_installer }}"
+    nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
+    nuke_executable: "{{ nuke_install_path }}/Nuke{{ nuke_version.split('v')[0] }}"
+    foundry_license: "24101@license"
+    
+    # Pipeline Configuration
+    nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
+    pipeline_path: "/mnt/Library/pipeline/live_linux"
+    
+    # ShotGrid Action Menu Configuration (NEW)
+    shotgun_desktop_src: "/mnt/Library/pipeline/live_linux/shotgun_action_menu_items/shotgunlive.desktop"
+    shotgun_desktop_dest: "/usr/share/applications/shotgunlive.desktop"
+    shotgun_python: "/mnt/Library/external_packages/python-3.11.7/python"
+    shotgun_script: "/mnt/Library/pipeline/live_linux/shotgun_action_menu_items/main.py"
+    
+    ad_home_base: "/home/ad.noxvfx.com"
+    installer_dest: "/var/tmp/{{ nuke_installer }}"
+
+  tasks:
+    # [Previous dependency installation tasks...]
+    
+    # Step 2: Install Nuke (unchanged)
+    - name: Check if Nuke is already installed
+      stat: path="{{ nuke_executable }}"
+      register: nuke_installed
+
+    - name: Copy Nuke installer
+      copy:
+        src: "{{ nuke_installer_path }}"
+        dest: "{{ installer_dest }}"
+        mode: '0755'
+      when: not nuke_installed.stat.exists
+
+    - name: Install Nuke
+      command: "{{ installer_dest }} --prefix={{ nuke_install_dir }} --accept-foundry-eula"
+      args:
+        creates: "{{ nuke_executable }}"
+      when: not nuke_installed.stat.exists
+
+    - name: Remove installer
+      file: path="{{ installer_dest }}" state=absent
+
+    # Step 3: Configure System-Wide Environment
+    - name: Create Nuke environment configuration
+      copy:
+        dest: /etc/profile.d/nuke.sh
+        mode: '0644'
+        content: |
+          # Foundry Nuke & Pipeline Environment Configuration
+          export foundry_LICENSE={{ foundry_license }}
+          export NUKE_PATH={{ nuke_path }}
+          export PATH={{ pipeline_path }}:{{ nuke_install_path }}:$PATH
+
+    # Step 4: Create Desktop Icons in /etc/skel (unchanged)
+    - name: Create applications directory in /etc/skel
+      file:
+        path: /etc/skel/.local/share/applications
+        state: directory
+        mode: '0755'
+
+    - name: Create Nuke desktop entry
+      copy:
+        dest: /etc/skel/.local/share/applications/nuke{{ nuke_version }}.desktop
+        mode: '0644'
+        content: |
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=Nuke {{ nuke_version }}
+          Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} PATH={{ pipeline_path }}:{{ nuke_install_path }}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin {{ nuke_executable }} %f
+          Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
+          Terminal=false
+          Categories=Graphics;2DGraphics;VFX;
+          MimeType=application/x-nuke;
+
+    # [NukeX and Nuke Studio entries...]
+
+    # Step 5: Deploy to Existing AD Users (unchanged)
+    - name: Find existing AD user home directories
+      find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        depth: 1
+      register: ad_users
+      failed_when: false
+
+    - name: Deploy desktop icons to existing AD users
+      block:
+        - name: Ensure user applications directory exists
+          file:
+            path: "{{ item.path }}/.local/share/applications"
+            state: directory
+            mode: '0755'
+            owner: "{{ item.uid }}"
+            group: "{{ item.gid }}"
+        
+        - name: Copy desktop entries from skel
+          copy:
+            src: /etc/skel/.local/share/applications/
+            dest: "{{ item.path }}/.local/share/applications/"
+            remote_src: yes
+            mode: '0644'
+            owner: "{{ item.uid }}"
+            group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files | length > 0
+
+    # Step 6: Install ShotGrid URL Protocol Handler (NEW)
+    - name: Verify ShotGrid desktop file exists on storage
+      stat:
+        path: "{{ shotgun_desktop_src }}"
+      register: shotgun_src_check
+      delegate_to: 127.0.0.1  # Run on Ansible controller
+      run_once: true
+      failed_when: not shotgun_src_check.stat.exists
+      tags: shotgun
+
+    - name: Copy ShotGrid URL handler to system applications
+      copy:
+        src: "{{ shotgun_desktop_src }}"
+        dest: "{{ shotgun_desktop_dest }}"
+        mode: '0644'
+        remote_src: yes  # Source is on remote machine (storage mount)
+      tags: shotgun
+
+    - name: Update desktop database for system
+      command: update-desktop-database /usr/share/applications
+      changed_when: false
+      tags: shotgun
+
+    - name: Update MIME database for system
+      command: update-mime-database /usr/share/mime
+      changed_when: false
+      tags: shotgun
+
+    - name: Register shotgunlive URL protocol handler
+      command: xdg-mime default shotgunlive.desktop x-scheme-handler/shotgunlive
+      register: xdg_register
+      changed_when: '"already registered" not in xdg_register.stderr'
+      failed_when: false
+      tags: shotgun
+
+    # Step 7: Verification (UPDATED)
+    - name: Verify Nuke installation
+      command: "{{ nuke_executable }} --version"
+      environment:
+        foundry_LICENSE: "{{ foundry_license }}"
+        NUKE_PATH: "{{ nuke_path }}"
+        PATH: "{{ pipeline_path }}:{{ nuke_install_path }}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      register: nuke_version_output
+      changed_when: false
+      failed_when: false
+
+    - name: Verify ShotGrid URL handler registration
+      command: xdg-mime query default x-scheme-handler/shotgunlive
+      register: shotgun_handler_check
+      changed_when: false
+      failed_when: false
+      tags: shotgun
+
+    - name: Display installation results
+      debug:
+        msg: |
+          Nuke Installation Complete!
+          Version: {{ nuke_version_output.stdout | default('Unable to detect') }}
+          Installation Path: {{ nuke_executable }}
+          License Server: {{ foundry_license }}
+          NUKE_PATH: {{ nuke_path }}
+          Pipeline Path: {{ pipeline_path }}
+          ShotGrid Handler: {{ shotgun_handler_check.stdout | default('Not registered') }}
