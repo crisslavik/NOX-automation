@@ -15,6 +15,8 @@
     # Pipeline Configuration
     nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
     pipeline_path: "/mnt/Library/pipeline/live_linux"
+    nuke_path_legacy: "/mnt/Library/_nox-nuke13"
+
     
     # ShotGrid Configuration
     shotgun_desktop_src: "/mnt/Library/pipeline/live_linux/shotgun_action_menu_items/shotgunlive.desktop"
@@ -61,16 +63,26 @@
     - name: Remove installer
       file: path="{{ installer_dest }}" state=absent
 
-    # Step 3: Configure System-Wide Environment
+    # Step 3: Configure System-Wide Environment (FIXED)
     - name: Create Nuke environment configuration
       copy:
         dest: /etc/profile.d/nuke.sh
         mode: '0644'
         content: |
+          #!/bin/sh
           # Foundry Nuke & Pipeline Environment Configuration
           export foundry_LICENSE={{ foundry_license }}
-          export NUKE_PATH={{ nuke_path }}
-          export PATH={{ pipeline_path }}:{{ nuke_install_path }}:$PATH
+          
+          # NUKE_PATH: Support both new pipeline and legacy paths
+          export NUKE_PATH={{ nuke_path }}:{{ nuke_path_legacy }}
+          
+          # PATH: Add only if not already present (prevents duplication)
+          if [[ ":$PATH:" != *":{{ pipeline_path }}:"* ]]; then
+              export PATH={{ pipeline_path }}:$PATH
+          fi
+          if [[ ":$PATH:" != *":{{ nuke_install_path }}:"* ]]; then
+              export PATH={{ nuke_install_path }}:$PATH
+          fi
 
     # Step 4: Create Desktop Icons in /etc/skel
     - name: Create applications directory in /etc/skel
