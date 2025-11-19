@@ -35,8 +35,8 @@
           - libX11
           - libXext
           - libXi
-          - xdg-utils            # For URL protocol handler
-          - desktop-file-utils   # For desktop database
+          - xdg-utils
+          - desktop-file-utils
         state: present
         update_cache: yes
 
@@ -72,7 +72,7 @@
           export NUKE_PATH={{ nuke_path }}
           export PATH={{ pipeline_path }}:{{ nuke_install_path }}:$PATH
 
-    # Step 4: Create Desktop Icons in /etc/skel (for future AD users)
+    # Step 4: Create Desktop Icons in /etc/skel
     - name: Create applications directory in /etc/skel
       file:
         path: /etc/skel/.local/share/applications
@@ -148,7 +148,7 @@
       changed_when: '"already registered" not in xdg_register.stderr'
       failed_when: false
 
-    # Step 6: Deploy to Existing AD Users (FIXED MODE)
+    # Step 6: Deploy to Existing AD Users (FIXED - PROPER MODE & OWNERSHIP)
     - name: Find existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -157,11 +157,11 @@
       register: ad_users
       failed_when: false
 
-    - name: Ensure applications directory has correct permissions
+    - name: Ensure applications directory exists with correct ownership & mode
       file:
         path: "{{ item.path }}/.local/share/applications"
         state: directory
-        mode: '0755'  # FIX: Explicitly set execute bit
+        mode: '0755'  # ⚠️ CRITICAL: Execute bit must be set
         owner: "{{ item.path | basename }}"
         group: "domain users"
       loop: "{{ ad_users.files | default([]) }}"
@@ -175,7 +175,6 @@
         owner: "{{ item.path | basename }}"
         group: "domain users"
       loop: "{{ ad_users.files | default([]) }}"
-      
 
     # Step 7: Verification
     - name: Verify Nuke installation
