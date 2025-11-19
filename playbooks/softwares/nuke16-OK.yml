@@ -148,7 +148,7 @@
       changed_when: '"already registered" not in xdg_register.stderr'
       failed_when: false
 
-    # Step 6: Deploy to Existing AD Users (FIXED FOR 700 PERMISSIONS)
+    # Step 6: Deploy to Existing AD Users (PROPERLY FIXED)
     - name: Find existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -157,13 +157,18 @@
       register: ad_users
       failed_when: false
 
+    - name: Debug - Show users found
+      debug:
+        msg: "Will deploy to: {{ ad_users.files | map(attribute='path') | list }}"
+      when: ad_users.files | length > 0
+
     - name: Ensure user applications directory exists with correct ownership
       file:
         path: "{{ item.path }}/.local/share/applications"
         state: directory
         mode: '0755'
-        owner: "{{ item.path | basename }}"  # Extract username from path
-        group: "domain users"               # Your AD group name
+        owner: "{{ item.path | basename }}"  # Extract username from /home/ad.noxvfx.com/username
+        group: "domain users"
       loop: "{{ ad_users.files | default([]) }}"
 
     - name: Copy desktop entries from skel to existing users
