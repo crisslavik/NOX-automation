@@ -148,7 +148,7 @@
       changed_when: '"already registered" not in xdg_register.stderr'
       failed_when: false
 
-    # Step 6: Deploy to Existing AD Users
+    # Step 6: Deploy to Existing AD Users (FIXED - loop moved to tasks)
     - name: Find existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -157,24 +157,24 @@
       register: ad_users
       failed_when: false
 
-    - name: Deploy desktop icons to existing AD users
-      block:
-        - name: Ensure user applications directory exists
-          file:
-            path: "{{ item.path }}/.local/share/applications"
-            state: directory
-            mode: '0755'
-            owner: "{{ item.uid }}"
-            group: "{{ item.gid }}"
-        
-        - name: Copy desktop entries from skel
-          copy:
-            src: /etc/skel/.local/share/applications/
-            dest: "{{ item.path }}/.local/share/applications/"
-            remote_src: yes
-            mode: '0644'
-            owner: "{{ item.uid }}"
-            group: "{{ item.gid }}"
+    - name: Ensure user applications directory exists
+      file:
+        path: "{{ item.path }}/.local/share/applications"
+        state: directory
+        mode: '0755'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+      loop: "{{ ad_users.files }}"
+      when: ad_users.files | length > 0
+
+    - name: Copy desktop entries from skel to existing users
+      copy:
+        src: /etc/skel/.local/share/applications/
+        dest: "{{ item.path }}/.local/share/applications/"
+        remote_src: yes
+        mode: '0644'
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
       loop: "{{ ad_users.files }}"
       when: ad_users.files | length > 0
 
