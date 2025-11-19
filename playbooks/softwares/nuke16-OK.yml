@@ -148,7 +148,7 @@
       changed_when: '"already registered" not in xdg_register.stderr'
       failed_when: false
 
-    # Step 6: Deploy to Existing AD Users (FIXED - loop moved to tasks)
+    # Step 6: Deploy to Existing AD Users (FIXED FOR 700 PERMISSIONS)
     - name: Find existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -157,15 +157,14 @@
       register: ad_users
       failed_when: false
 
-    - name: Ensure user applications directory exists
+    - name: Ensure user applications directory exists with correct ownership
       file:
         path: "{{ item.path }}/.local/share/applications"
         state: directory
         mode: '0755'
-        owner: "{{ item.uid }}"
-        group: "{{ item.gid }}"
-      loop: "{{ ad_users.files }}"
-      when: ad_users.files | length > 0
+        owner: "{{ item.path | basename }}"  # Extract username from path
+        group: "domain users"               # Your AD group name
+      loop: "{{ ad_users.files | default([]) }}"
 
     - name: Copy desktop entries from skel to existing users
       copy:
@@ -173,10 +172,10 @@
         dest: "{{ item.path }}/.local/share/applications/"
         remote_src: yes
         mode: '0644'
-        owner: "{{ item.uid }}"
-        group: "{{ item.gid }}"
-      loop: "{{ ad_users.files }}"
-      when: ad_users.files | length > 0
+        owner: "{{ item.path | basename }}"
+        group: "domain users"
+      loop: "{{ ad_users.files | default([]) }}"
+      
 
     # Step 7: Verification
     - name: Verify Nuke installation
