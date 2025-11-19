@@ -148,7 +148,7 @@
       changed_when: '"already registered" not in xdg_register.stderr'
       failed_when: false
 
-    # Step 6: Deploy to Existing AD Users (CORRECTED GROUP)
+    # Step 6: Deploy to Existing AD Users (FIXED MODE)
     - name: Find existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -157,13 +157,13 @@
       register: ad_users
       failed_when: false
 
-    - name: Ensure user applications directory exists with correct ownership
+    - name: Ensure applications directory has correct permissions
       file:
         path: "{{ item.path }}/.local/share/applications"
         state: directory
-        mode: '0755'
+        mode: '0755'  # FIX: Explicitly set execute bit
         owner: "{{ item.path | basename }}"
-        group: "domain users"  # ⚠️ FIX: Space, not hyphen!
+        group: "domain users"
       loop: "{{ ad_users.files | default([]) }}"
 
     - name: Copy desktop entries from skel to existing users
@@ -173,7 +173,7 @@
         remote_src: yes
         mode: '0644'
         owner: "{{ item.path | basename }}"
-        group: "domain users"  # ⚠️ FIX: Space, not hyphen!
+        group: "domain users"
       loop: "{{ ad_users.files | default([]) }}"
       
 
