@@ -16,19 +16,31 @@
     nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
     pipeline_path: "/mnt/Library/pipeline/live_linux"
     
-    # ShotGrid Action Menu Configuration (NEW)
+    # ShotGrid Configuration
     shotgun_desktop_src: "/mnt/Library/pipeline/live_linux/shotgun_action_menu_items/shotgunlive.desktop"
     shotgun_desktop_dest: "/usr/share/applications/shotgunlive.desktop"
-    shotgun_python: "/mnt/Library/external_packages/python-3.11.7/python"
-    shotgun_script: "/mnt/Library/pipeline/live_linux/shotgun_action_menu_items/main.py"
     
     ad_home_base: "/home/ad.noxvfx.com"
     installer_dest: "/var/tmp/{{ nuke_installer }}"
 
   tasks:
-    # [Previous dependency installation tasks...]
-    
-    # Step 2: Install Nuke (unchanged)
+    # Step 1: Install Dependencies
+    - name: Install required dependencies
+      dnf:
+        name:
+          - numactl-libs
+          - mesa-libGL
+          - libglvnd-opengl
+          - libglvnd-glx
+          - libX11
+          - libXext
+          - libXi
+          - xdg-utils            # For URL protocol handler
+          - desktop-file-utils   # For desktop database
+        state: present
+        update_cache: yes
+
+    # Step 2: Install Nuke
     - name: Check if Nuke is already installed
       stat: path="{{ nuke_executable }}"
       register: nuke_installed
@@ -60,7 +72,7 @@
           export NUKE_PATH={{ nuke_path }}
           export PATH={{ pipeline_path }}:{{ nuke_install_path }}:$PATH
 
-    # Step 4: Create Desktop Icons in /etc/skel (unchanged)
+    # Step 4: Create Desktop Icons in /etc/skel (for future AD users)
     - name: Create applications directory in /etc/skel
       file:
         path: /etc/skel/.local/share/applications
@@ -82,9 +94,61 @@
           Categories=Graphics;2DGraphics;VFX;
           MimeType=application/x-nuke;
 
-    # [NukeX and Nuke Studio entries...]
+    - name: Create NukeX desktop entry
+      copy:
+        dest: /etc/skel/.local/share/applications/nukex{{ nuke_version }}.desktop
+        mode: '0644'
+        content: |
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=NukeX {{ nuke_version }}
+          Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} PATH={{ pipeline_path }}:{{ nuke_install_path }}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin {{ nuke_executable }} --nukex %f
+          Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
+          Terminal=false
+          Categories=Graphics;2DGraphics;VFX;
+          MimeType=application/x-nuke;
 
-    # Step 5: Deploy to Existing AD Users (unchanged)
+    - name: Create Nuke Studio desktop entry
+      copy:
+        dest: /etc/skel/.local/share/applications/nukestudio{{ nuke_version }}.desktop
+        mode: '0644'
+        content: |
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=Nuke Studio {{ nuke_version }}
+          Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} PATH={{ pipeline_path }}:{{ nuke_install_path }}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin {{ nuke_executable }} --studio %f
+          Icon={{ nuke_install_path }}/plugins/icons/NukeApp256.png
+          Terminal=false
+          Categories=Graphics;2DGraphics;VFX;
+          MimeType=application/x-nuke;
+
+    # Step 5: Install ShotGrid URL Protocol Handler
+    - name: Verify ShotGrid desktop file exists on storage
+      stat:
+        path: "{{ shotgun_desktop_src }}"
+      register: shotgun_src_check
+      failed_when: not shotgun_src_check.stat.exists
+
+    - name: Copy ShotGrid URL handler to system applications
+      copy:
+        src: "{{ shotgun_desktop_src }}"
+        dest: "{{ shotgun_desktop_dest }}"
+        mode: '0644'
+        remote_src: yes
+
+    - name: Update system desktop database
+      command: update-desktop-database /usr/share/applications
+      changed_when: false
+
+    - name: Register shotgunlive URL protocol handler
+      command: xdg-mime default shotgunlive.desktop x-scheme-handler/shotgunlive
+      register: xdg_register
+      changed_when: '"already registered" not in xdg_register.stderr'
+      failed_when: false
+
+    # Step 6: Deploy to Existing AD Users
     - name: Find existing AD user home directories
       find:
         paths: "{{ ad_home_base }}"
@@ -114,42 +178,7 @@
       loop: "{{ ad_users.files }}"
       when: ad_users.files | length > 0
 
-    # Step 6: Install ShotGrid URL Protocol Handler (NEW)
-    - name: Verify ShotGrid desktop file exists on storage
-      stat:
-        path: "{{ shotgun_desktop_src }}"
-      register: shotgun_src_check
-      delegate_to: 127.0.0.1  # Run on Ansible controller
-      run_once: true
-      failed_when: not shotgun_src_check.stat.exists
-      tags: shotgun
-
-    - name: Copy ShotGrid URL handler to system applications
-      copy:
-        src: "{{ shotgun_desktop_src }}"
-        dest: "{{ shotgun_desktop_dest }}"
-        mode: '0644'
-        remote_src: yes  # Source is on remote machine (storage mount)
-      tags: shotgun
-
-    - name: Update desktop database for system
-      command: update-desktop-database /usr/share/applications
-      changed_when: false
-      tags: shotgun
-
-    - name: Update MIME database for system
-      command: update-mime-database /usr/share/mime
-      changed_when: false
-      tags: shotgun
-
-    - name: Register shotgunlive URL protocol handler
-      command: xdg-mime default shotgunlive.desktop x-scheme-handler/shotgunlive
-      register: xdg_register
-      changed_when: '"already registered" not in xdg_register.stderr'
-      failed_when: false
-      tags: shotgun
-
-    # Step 7: Verification (UPDATED)
+    # Step 7: Verification
     - name: Verify Nuke installation
       command: "{{ nuke_executable }} --version"
       environment:
@@ -165,7 +194,6 @@
       register: shotgun_handler_check
       changed_when: false
       failed_when: false
-      tags: shotgun
 
     - name: Display installation results
       debug:
