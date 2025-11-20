@@ -36,10 +36,10 @@
   gather_facts: no
   
   tasks:
-    - name: Show all hosts status
+    - name: Show all hosts status (FIXED LOGIC)
       debug:
         msg: |
           PyQt6 Installation Summary:
           {% for host in groups['all'] %}
-          {{ host }}: {{ hostvars[host]['pyqt6_check']['rc'] | default('unknown') | ternary('installed', 'missing') }}
+          {{ host }}: {{ hostvars[host]['pyqt6_check']['rc'] | default('unknown') | ternary('missing', 'installed') }}
           {% endfor %}
