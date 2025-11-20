@@ -1,0 +1,216 @@
+---
+- name: System Environment Health Check & Manager
+  hosts: all
+  become: yes
+  
+  vars:
+    # Variables to check for duplicates (colon-separated)
+    colon_vars:
+      - PATH
+      - LD_LIBRARY_PATH
+      - PYTHONPATH
+      - NUKE_PATH
+      - NUKE_PLUGIN_PATH
+    
+    # Variables to check if directories exist
+    path_vars:
+      - PATH
+      - LD_LIBRARY_PATH
+    
+    # Custom Python path (for pipeline)
+    custom_python: "/mnt/Library/external_packages/python-3.11.7/python"
+    
+    # Legacy paths to preserve
+    nuke_path_legacy: "/mnt/Library/_nox-nuke16"
+
+  tasks:
+    # Step 1: Gather and Analyze Environment
+    - name: Get current environment variables
+      shell: |
+        env | sort
+      register: full_env
+      changed_when: false
+
+    - name: Parse colon-separated variables
+      shell: |
+        for var in {{ colon_vars | join(' ') }}; do
+          if [[ -n "${!var:-}" ]]; then
+            echo "=== $var ==="
+            echo "${!var}" | tr ':' '\n' | awk '{print NR ": " $0}'
+            echo "Total entries: $(echo "${!var}" | tr ':' '\n' | wc -l)"
+            echo "Unique entries: $(echo "${!var}" | tr ':' '\n' | sort -u | wc -l)"
+            echo "Duplicates: $(echo "${!var}" | tr ':' '\n' | sort | uniq -d | wc -l)"
+            if [[ $(echo "${!var}" | tr ':' '\n' | sort | uniq -d | wc -l) -gt 0 ]]; then
+              echo "Duplicate entries:"
+              echo "${!var}" | tr ':' '\n' | sort | uniq -d
+            fi
+            echo ""
+          fi
+        done
+      register: env_analysis
+      changed_when: false
+
+    - name: Show environment analysis report
+      debug:
+        msg: "{{ env_analysis.stdout }}"
+        verbosity: 1
+
+    # Step 2: Check for Missing Directories in PATH-style Variables
+    - name: Verify directories exist in PATH variables
+      shell: |
+        for var in {{ path_vars | join(' ') }}; do
+          echo "=== Checking $var directories ==="
+          if [[ -n "${!var:-}" ]]; then
+            IFS=':' read -ra DIRS <<< "${!var}"
+            for dir in "${DIRS[@]}"; do
+              if [[ ! -d "$dir" && -n "$dir" ]]; then
+                echo "MISSING: $dir"
+              fi
+            done
+          fi
+          echo ""
+        done
+      register: dir_check
+      changed_when: false
+
+    - name: Show missing directories report
+      debug:
+        msg: "{{ dir_check.stdout }}"
+        verbosity: 1
+
+    # Step 3: Fix Duplicates in Colon-Separated Variables
+    - name: Create deduplication script
+      copy:
+        dest: /usr/local/bin/dedup-env.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Deduplicate colon-separated environment variables
+          echo "=== Deduplicating Environment Variables ==="
+          
+          # Function to deduplicate a variable
+          dedup_var() {
+            local var_name="$1"
+            local var_value="${!var_name:-}"
+            
+            if [[ -n "$var_value" ]]; then
+              local deduped=$(echo "$var_value" | awk -v RS=':' -v ORS=':' '!a[$0]++' | sed 's/:$//')
+              if [[ "$var_value" != "$deduped" ]]; then
+                echo "Fixed duplicates in $var_name"
+                export "$var_name=$deduped"
+              fi
+            fi
+          }
+          
+          # Deduplicate all colon-separated variables
+          {% for var in colon_vars %}
+          dedup_var {{ var }}
+          {% endfor %}
+          
+          echo "=== Done ==="
+          echo "PATH entries: $(echo ${PATH:-} | tr ':' '\n' | wc -l)"
+          echo "NUKE_PATH entries: $(echo ${NUKE_PATH:-} | tr ':' '\n' | wc -l)"
+
+    # Step 4: Create Clean Environment Script
+    - name: Create clean environment profile
+      copy:
+        dest: /etc/profile.d/00-nuke-clean-env.sh
+        mode: '0644'
+        content: |
+          #!/bin/sh
+          # Clean environment on shell startup
+          source /usr/local/bin/dedup-env.sh
+
+    # Step 5: Create Main Nuke Environment Script
+    - name: Create Nuke environment configuration
+      copy:
+        dest: /etc/profile.d/nuke.sh
+        mode: '0644'
+        content: |
+          #!/bin/sh
+          # Foundry Nuke & Pipeline Environment Configuration
+          
+          # License
+          export foundry_LICENSE={{ foundry_license }}
+          
+          # NUKE_PATH (with deduplication)
+          if [[ ":${NUKE_PATH:-}:" != *":{{ nuke_path }}:"* ]]; then
+              export NUKE_PATH={{ nuke_path }}${NUKE_PATH:+:${NUKE_PATH}}
+          fi
+          if [[ ":${NUKE_PATH:-}:" != *":{{ nuke_path_legacy }}:"* ]]; then
+              export NUKE_PATH={{ nuke_path_legacy }}${NUKE_PATH:+:${NUKE_PATH}}
+          fi
+          
+          # PATH (with deduplication)
+          if [[ ":${PATH}:" != *":{{ pipeline_path }}:"* ]]; then
+              export PATH={{ pipeline_path }}:$PATH
+          fi
+          if [[ ":${PATH}:" != *":{{ nuke_install_path }}:"* ]]; then
+              export PATH={{ nuke_install_path }}:$PATH
+          fi
+          
+          # Clean up any duplicates that might exist
+          source /usr/local/bin/dedup-env.sh
+
+    # Step 6: Verify Environment (Report Only)
+    - name: Generate environment verification report
+      shell: |
+        echo "=== Environment Verification Report ==="
+        echo "Date: $(date)"
+        echo "Host: $(hostname)"
+        echo ""
+        
+        # Source the new environment
+        source /etc/profile.d/nuke.sh
+        
+        echo "NUKE_PATH = $NUKE_PATH"
+        echo "  Entries: $(echo $NUKE_PATH | tr ':' '\n' | wc -l)"
+        echo ""
+        
+        echo "PATH (first 10 entries) = $(echo $PATH | cut -d: -f1-10)"
+        echo "  Total entries: $(echo $PATH | tr ':' '\n' | wc -l)"
+        echo ""
+        
+        # Check for issues
+        echo "=== Issues Found ==="
+        
+        # Empty entries
+        if echo "$PATH" | grep -q "::"; then
+          echo "⚠️  PATH has empty entries"
+        fi
+        
+        if echo "$NUKE_PATH" | grep -q "::"; then
+          echo "⚠️  NUKE_PATH has empty entries"
+        fi
+        
+        # Non-existent directories
+        for dir in $(echo "$PATH" | tr ':' '\n'); do
+          if [[ -n "$dir" && ! -d "$dir" ]]; then
+            echo "⚠️  Missing PATH directory: $dir"
+          fi
+        done
+        
+        # Non-existent directories in NUKE_PATH
+        for dir in $(echo "$NUKE_PATH" | tr ':' '\n'); do
+          if [[ -n "$dir" && ! -d "$dir" ]]; then
+            echo "⚠️  Missing NUKE_PATH directory: $dir"
+          fi
+        done
+        
+        echo "=== Report Complete ==="
+      register: verification
+      changed_when: false
+
+    - name: Display verification report
+      debug:
+        msg: "{{ verification.stdout }}"
+
+    # Step 7: Summary
+    - name: Summary
+      debug:
+        msg: |
+          Environment management complete!
+          - Deduplication script: /usr/local/bin/dedup-env.sh
+          - Nuke environment: /etc/profile.d/nuke.sh
+          - Auto-cleanup: /etc/profile.d/00-nuke-clean-env.sh
+          - Run cleanup manually: cleanup-nuke-env.sh (user)
