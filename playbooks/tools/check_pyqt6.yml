@@ -1,0 +1,45 @@
+---
+- name: Check PyQt6 Installation Across Network
+  hosts: all
+  become: no  # No sudo needed for this check
+  
+  vars:
+    custom_python: "/mnt/Library/external_packages/python-3.11.7/python"
+  
+  tasks:
+    - name: Check if PyQt6 can be imported
+      command: "{{ custom_python }} -c 'from PyQt6 import QtWidgets; print(\"OK\")'"
+      register: pyqt6_check
+      failed_when: false
+      changed_when: false
+
+    - name: Check pip list for PyQt6
+      command: "{{ custom_python }} -m pip show PyQt6"
+      register: pyqt6_pip
+      failed_when: false
+      changed_when: false
+
+    - name: Report PyQt6 status
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          PyQt6 Import: {{ 'OK' if pyqt6_check.rc == 0 else 'MISSING' }}
+          PyQt6 Version: {{ pyqt6_pip.stdout | regex_search('Version: (.+)', '\\1') | default(['N/A']) | first }}
+          Action: {{ 'Install PyQt6' if pyqt6_check.rc != 0 else 'Already installed' }}
+
+    - name: Create summary list
+      set_fact:
+        pyqt6_status: "{{ 'installed' if pyqt6_check.rc == 0 else 'missing' }}"
+
+- name: Summary Report
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Show all hosts status
+      debug:
+        msg: |
+          PyQt6 Installation Summary:
+          {% for host in groups['all'] %}
+          {{ host }}: {{ hostvars[host]['pyqt6_status'] | default('unknown') }}
+          {% endfor %}
