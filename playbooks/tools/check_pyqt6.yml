@@ -14,22 +14,22 @@
       changed_when: false
 
     - name: Check pip list for PyQt6
-      command: "{{ custom_python }} -m pip show PyQt6"
+      command: "{{ custom_python }} -m pip list"
       register: pyqt6_pip
       failed_when: false
       changed_when: false
+
+    - name: Extract PyQt6 version if present
+      set_fact:
+        pyqt6_version: "{{ (pyqt6_pip.stdout | regex_findall('PyQt6\\s+(\\S+)'))[0] | default('N/A') }}"
 
     - name: Report PyQt6 status
       debug:
         msg: |
           Host: {{ inventory_hostname }}
           PyQt6 Import: {{ 'OK' if pyqt6_check.rc == 0 else 'MISSING' }}
-          PyQt6 Version: {{ pyqt6_pip.stdout | regex_search('Version: (.+)', '\\1') | default(['N/A']) | first }}
+          PyQt6 Version: {{ pyqt6_version }}
           Action: {{ 'Install PyQt6' if pyqt6_check.rc != 0 else 'Already installed' }}
-
-    - name: Create summary list
-      set_fact:
-        pyqt6_status: "{{ 'installed' if pyqt6_check.rc == 0 else 'missing' }}"
 
 - name: Summary Report
   hosts: localhost
@@ -41,5 +41,5 @@
         msg: |
           PyQt6 Installation Summary:
           {% for host in groups['all'] %}
-          {{ host }}: {{ hostvars[host]['pyqt6_status'] | default('unknown') }}
+          {{ host }}: {{ hostvars[host]['pyqt6_check']['rc'] | default('unknown') | ternary('installed', 'missing') }}
           {% endfor %}
