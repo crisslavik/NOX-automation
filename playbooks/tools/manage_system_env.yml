@@ -4,6 +4,18 @@
   become: yes
   
   vars:
+    # Nuke Configuration
+    nuke_version: "16.0v6"
+    nuke_install_dir: "/opt"
+    nuke_install_path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}"
+    nuke_executable: "{{ nuke_install_path }}/Nuke{{ nuke_version.split('v')[0] }}"
+    foundry_license: "24101@license"  # ⚠️ Added
+    
+    # Pipeline Configuration
+    nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
+    nuke_path_legacy: "/mnt/Library/_nox-nuke16"  # ⚠️ Added
+    pipeline_path: "/mnt/Library/pipeline/live_linux"  # ⚠️ Added
+    
     # Variables to check for duplicates (colon-separated)
     colon_vars:
       - PATH
@@ -17,11 +29,8 @@
       - PATH
       - LD_LIBRARY_PATH
     
-    # Custom Python path (for pipeline)
-    custom_python: "/mnt/Library/external_packages/python-3.11.7/python"
-    
-    # Legacy paths to preserve
-    nuke_path_legacy: "/mnt/Library/_nox-nuke16"
+    # System-wide env script location
+    env_script_path: /etc/profile.d/nuke.sh
 
   tasks:
     # Step 1: Gather and Analyze Environment
@@ -109,9 +118,9 @@
           
           echo "=== Done ==="
           echo "PATH entries: $(echo ${PATH:-} | tr ':' '\n' | wc -l)"
-          echo "NUKE_PATH entries: $(echo ${NUKE_PATH:-} | tr ':' '\n' | wc -l)"
+          echo "NUKE_PATH entries: $(echo ${NUKE_PATH:-} | wc -l)"
 
-    # Step 4: Create Clean Environment Script
+    # Step 4: Create Clean Environment Profile
     - name: Create clean environment profile
       copy:
         dest: /etc/profile.d/00-nuke-clean-env.sh
@@ -124,7 +133,7 @@
     # Step 5: Create Main Nuke Environment Script
     - name: Create Nuke environment configuration
       copy:
-        dest: /etc/profile.d/nuke.sh
+        dest: "{{ env_script_path }}"
         mode: '0644'
         content: |
           #!/bin/sh
@@ -161,7 +170,7 @@
         echo ""
         
         # Source the new environment
-        source /etc/profile.d/nuke.sh
+        source {{ env_script_path }}
         
         echo "NUKE_PATH = $NUKE_PATH"
         echo "  Entries: $(echo $NUKE_PATH | tr ':' '\n' | wc -l)"
@@ -211,6 +220,6 @@
         msg: |
           Environment management complete!
           - Deduplication script: /usr/local/bin/dedup-env.sh
-          - Nuke environment: /etc/profile.d/nuke.sh
+          - Nuke environment: {{ env_script_path }}
           - Auto-cleanup: /etc/profile.d/00-nuke-clean-env.sh
-          - Run cleanup manually: cleanup-nuke-env.sh (user)
+          - Run cleanup manually: dedup-env.sh (as user)
