@@ -13,7 +13,7 @@
     
     # Pipeline Configuration
     nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
-    nuke_path_legacy: "/mnt/Library/_nox-nuke16"  # ⚠️ Added
+    nuke_path_legacy: "/mnt/Library/_nox-nuke13"  # ⚠️ Added
     pipeline_path: "/mnt/Library/pipeline/live_linux"  # ⚠️ Added
     
     # Variables to check for duplicates (colon-separated)
