@@ -8,8 +8,10 @@
 # Migrate of playbooks/gnome-config.yml into role tasks
 
 - name: Display GNOME configuration plan
-  ansible.builtin.debug:
-    msg: |
+  ansible.builtin.pause:
+    seconds: 1
+    prompt: |
+
       🖥️ NOX VFX GNOME Configuration (role)
       Target: {{ inventory_hostname }}
 

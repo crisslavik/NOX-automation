@@ -1,0 +1,50 @@
+---
+- name: Configure SELinux to Permissive Mode
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Display current SELinux status
+      ansible.builtin.command: getenforce
+      register: selinux_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show current SELinux mode
+      ansible.builtin.debug:
+        msg: "Current SELinux mode: {{ selinux_status.stdout }}"
+
+    - name: Set SELinux to permissive mode (runtime)
+      ansible.builtin.command: setenforce 0
+      when: selinux_status.stdout == "Enforcing"
+      register: selinux_runtime
+      changed_when: selinux_runtime.rc == 0
+
+    - name: Configure SELinux to permissive mode (persistent)
+      ansible.builtin.lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=permissive'
+        backup: yes
+      register: selinux_config
+
+    - name: Verify SELinux configuration
+      ansible.builtin.command: getenforce
+      register: selinux_verify
+      changed_when: false
+
+    - name: Display SELinux configuration result
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
+          ✅ SELinux Configuration Complete
+
+          Current mode: {{ selinux_verify.stdout }}
+          Config file: /etc/selinux/config set to permissive
+
+          Note: SELinux is now in permissive mode
+          - Permissive mode logs policy violations but doesn't enforce them
+          - Useful for VFX workstations with complex software stacks
+          - Policy violations are logged to /var/log/audit/audit.log

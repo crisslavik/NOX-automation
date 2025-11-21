@@ -228,8 +228,10 @@
     - verify
 
 - name: Display installation result
-  ansible.builtin.debug:
-    msg: |
+  ansible.builtin.pause:
+    seconds: 1
+    prompt: |
+
       ✅ Nuke {{ nuke_version }} Installation Complete!
       Version: {{ nuke_version_output.stdout | default('Unable to detect - may need to login/logout') }}
       Installation Path: {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }}

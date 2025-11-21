@@ -271,10 +271,12 @@
         mode: '0755'
 
     - name: Display completion summary
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           NOX Wallpaper deployment completed successfully!
-          
+
           What was configured:
           ✅ User desktop wallpaper (all AD users)
           ✅ GDM login screen wallpaper
@@ -282,9 +284,9 @@
           ✅ Autostart script for new logins
           ✅ System-wide dconf settings
           ✅ X11 and Nice-DCV compatibility
-          
+
           To verify: Run /usr/local/bin/verify-nox-wallpaper.sh
-          
+
           Changes will be visible:
           - Immediately for some logged-in users
           - On next login for all users

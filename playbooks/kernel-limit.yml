@@ -1,0 +1,56 @@
+---
+- name: Configure Kernel Installation Limit
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Display current DNF kernel limit configuration
+      ansible.builtin.shell: grep -E '^installonly_limit=' /etc/dnf/dnf.conf || echo "not configured"
+      register: current_limit
+      changed_when: false
+      failed_when: false
+
+    - name: Show current kernel limit setting
+      ansible.builtin.debug:
+        msg: "Current setting: {{ current_limit.stdout }}"
+
+    - name: Configure DNF to keep only 2 kernels
+      ansible.builtin.lineinfile:
+        path: /etc/dnf/dnf.conf
+        regexp: '^installonly_limit='
+        line: 'installonly_limit=2'
+        backup: yes
+      register: kernel_limit_config
+
+    - name: List currently installed kernels
+      ansible.builtin.shell: rpm -q kernel | sort -V
+      register: installed_kernels
+      changed_when: false
+      failed_when: false
+
+    - name: Display installed kernels
+      ansible.builtin.debug:
+        msg: "{{ installed_kernels.stdout_lines }}"
+
+    - name: Remove old kernels (keep only 2 most recent)
+      ansible.builtin.shell: |
+        dnf remove -y $(dnf repoquery --installonly --latest-limit=-2 -q)
+      when: installed_kernels.stdout_lines | length > 2
+      register: kernel_cleanup
+      failed_when: false
+
+    - name: Display kernel limit configuration result
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
+          ✅ Kernel Limit Configuration Complete
+
+          DNF Config: /etc/dnf/dnf.conf set to installonly_limit=2
+          Current kernels installed: {{ installed_kernels.stdout_lines | length }}
+
+          Note: Kernel limit is now set to 2
+          - Only the 2 most recent kernels will be kept
+          - Older kernels will be automatically removed during updates
+          - This prevents /boot partition from filling up

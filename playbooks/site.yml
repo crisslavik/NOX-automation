@@ -1,8 +1,28 @@
 ---
-# Site playbook: entrypoint for NOX automation
+# Site playbook: Complete NOX VFX workstation deployment
 # Use: ansible-playbook -i inventory playbooks/site.yml
 
-- name: NOX Workstation site playbook
+# ========================================
+# PHASE 0: System Configuration
+# ========================================
+- name: "PHASE 0A: SELinux Permissive Mode"
+  ansible.builtin.import_playbook: selinux-permissive.yml
+  tags:
+    - system
+    - selinux
+    - phase0
+
+- name: "PHASE 0B: Kernel Installation Limit"
+  ansible.builtin.import_playbook: kernel-limit.yml
+  tags:
+    - system
+    - kernel
+    - phase0
+
+# ========================================
+# PHASE 1: NOX Full Workstation Setup
+# ========================================
+- name: NOX Workstation Full Deployment
   hosts: all
   become: yes
   gather_facts: yes

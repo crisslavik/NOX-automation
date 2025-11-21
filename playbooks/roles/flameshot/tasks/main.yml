@@ -264,13 +264,15 @@
   ignore_errors: yes
 
 - name: Display completion message
-  ansible.builtin.debug:
-    msg: |
+  ansible.builtin.pause:
+    seconds: 1
+    prompt: |
+
       📸 Flameshot Installation Complete!
-      
+
       ✅ Installed via Flatpak
       ✅ Configured for AD users (/home/ad.noxvfx.com/)
       ✅ Print Screen key mapped to Flameshot
       ✅ Screenshots saved to: ~/Pictures/Screenshots/
-      
+
       ⚠️ Users may need to logout/login for shortcuts to take effect

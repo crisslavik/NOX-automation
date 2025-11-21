@@ -34,21 +34,23 @@
       changed_when: false
 
     - name: Display diagnostic results
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           === NVIDIA Black Screen Diagnostics ===
-          
+
           NVIDIA Driver Status:
           {{ nvidia_smi_check.stdout }}
-          
+
           Loaded Modules:
           {{ modules_check.stdout }}
-          
+
           System Target:
           {{ target_check.stdout }}
-          
+
           GDM Status:
           {{ gdm_status.status.ActiveState }}
-          
+
           X.Org Errors:
           {{ xorg_errors.stdout }}

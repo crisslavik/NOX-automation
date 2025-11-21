@@ -26,8 +26,10 @@
   failed_when: false
 
 - name: Display Brave installation result
-  ansible.builtin.debug:
-    msg: |
+  ansible.builtin.pause:
+    seconds: 1
+    prompt: |
+
       {% if brave_version.stdout %}
       ✅ Brave Browser installed: {{ brave_version.stdout }}
       {% else %}

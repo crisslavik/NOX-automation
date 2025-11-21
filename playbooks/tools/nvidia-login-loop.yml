@@ -57,14 +57,16 @@
         seconds: 5
 
     - name: Display fix status
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           ✅ Login loop fix applied to {{ inventory_hostname }}
-          
+
           Changes made:
           • Wayland disabled in GDM
           • X11 forced as display server
           • GNOME session packages verified
           • GDM restarted
-          
+
           🔍 Try logging in now on machine 07

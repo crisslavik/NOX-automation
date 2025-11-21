@@ -4,6 +4,7 @@
 # Use: ansible-playbook -i inventory playbooks/site-basic.yml
 #
 # This playbook installs the basic foundation for a NOX workstation:
+# 0. System configuration (SELinux, kernel limit)
 # 1. System updates
 # 2. Domain joining (AD integration)
 # 3. GNOME desktop configuration
@@ -27,8 +28,10 @@
 
   tasks:
     - name: Display NOX Basic Setup Banner
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 2
+        prompt: |
+
           ╔══════════════════════════════════════════════════════════╗
           ║                                                          ║
           ║          NOX VFX BASIC WORKSTATION SETUP                 ║
@@ -40,6 +43,25 @@
           ║  This will install the basic NOX VFX foundation          ║
           ║                                                          ║
           ╚══════════════════════════════════════════════════════════╝
+
+          Starting in 2 seconds...
+
+# ========================================
+# PHASE 0: System Configuration
+# ========================================
+- name: "PHASE 0A: SELinux Permissive Mode"
+  ansible.builtin.import_playbook: selinux-permissive.yml
+  tags:
+    - system
+    - selinux
+    - phase0
+
+- name: "PHASE 0B: Kernel Installation Limit"
+  ansible.builtin.import_playbook: kernel-limit.yml
+  tags:
+    - system
+    - kernel
+    - phase0
 
 # ========================================
 # PHASE 1: System Updates
@@ -158,6 +180,8 @@
           OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
 
           Installed Components:
+          ✅ SELinux set to permissive mode
+          ✅ Kernel limit configured (max 2 kernels)
           ✅ System updates
           ✅ Active Directory integration ({{ 'SKIPPED' if skip_domain_join | default(false) else 'COMPLETED' }})
           ✅ GNOME desktop configuration
@@ -183,13 +207,17 @@
         mode: '0644'
 
     - name: Display completion message
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           ╔══════════════════════════════════════════════════════════╗
           ║                                                          ║
           ║       ✅ NOX VFX BASIC SETUP COMPLETE! ✅                ║
           ║                                                          ║
           ║  Your workstation is now configured with:                ║
+          ║  • SELinux permissive mode                               ║
+          ║  • Kernel limit (max 2 kernels)                          ║
           ║  • Updated system packages                               ║
           ║  • Active Directory integration                          ║
           ║  • GNOME dark theme & VFX optimizations                  ║

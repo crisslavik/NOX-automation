@@ -9,8 +9,10 @@
   
   tasks:
     - name: Display setup banner
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 2
+        prompt: |
+
           ╔══════════════════════════════════════════════════════════════╗
           ║                    NOX VFX Workstation Setup                 ║
           ║                                                              ║
@@ -23,6 +25,8 @@
           ║  Target: {{ inventory_hostname }}                            ║
           ╚══════════════════════════════════════════════════════════════╝
 
+          Starting in 2 seconds...
+
 # Use the consolidated site playbook (roles-based)
 - import_playbook: site.yml
 
@@ -31,8 +35,10 @@
   hosts: all
   tasks:
     - name: Display completion summary
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           ╔══════════════════════════════════════════════════════════════╗
           ║                    🎉 SETUP COMPLETE! 🎉                     ║
           ║                                                              ║

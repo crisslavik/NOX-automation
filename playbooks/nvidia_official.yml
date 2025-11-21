@@ -11,11 +11,15 @@
     
   tasks:
     - name: Display installation strategy
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 2
+        prompt: |
+
           🔧 NVIDIA Official Repository Installation
           Target: {{ inventory_hostname }}
           Using NVIDIA's official proprietary driver
+
+          Starting in 2 seconds...
 
     - name: Check for NVIDIA GPU
       ansible.builtin.shell: lspci | grep -i nvidia
@@ -253,10 +257,12 @@
 
     # ====== PRE-REBOOT STATUS ======
     - name: Display pre-reboot status
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 2
+        prompt: |
+
           ✅ Installation complete - rebooting now
-          
+
           After reboot, verification will run automatically
 
     - name: Reboot system
@@ -289,37 +295,38 @@
 
     # ====== FINAL REPORT ======
     - name: Display verification results
-      ansible.builtin.debug:
-        msg: |
-          
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           ╔════════════════════════════════════════════════╗
           ║     NVIDIA INSTALLATION VERIFICATION          ║
           ╚════════════════════════════════════════════════╝
-          
+
           Host: {{ inventory_hostname }}
-          
+
           {% if nvidia_modules.rc == 0 %}
           ✅ NVIDIA Modules: LOADED
           {{ nvidia_modules.stdout }}
           {% else %}
           ❌ NVIDIA Modules: NOT LOADED
           {% endif %}
-          
+
           {% if nvidia_smi.rc == 0 %}
           ✅ nvidia-smi: WORKING
-          
+
           {{ nvidia_smi.stdout }}
           {% else %}
           ❌ nvidia-smi: FAILED
           Error: {{ nvidia_smi.stderr }}
           {% endif %}
-          
+
           {% if gdm_status.status.ActiveState == "active" %}
           ✅ GDM: RUNNING
           {% else %}
           ❌ GDM: {{ gdm_status.status.ActiveState }}
           {% endif %}
-          
+
           ╔════════════════════════════════════════════════╗
           {% if nvidia_smi.rc == 0 %}
           ║  🎉 SUCCESS! GPU is ready                     ║
@@ -327,7 +334,7 @@
           ║  ❌ FAILED - Check logs above                 ║
           {% endif %}
           ╚════════════════════════════════════════════════╝
-          
+
           Next: Try logging in via GUI
 
     - name: Mark verification complete

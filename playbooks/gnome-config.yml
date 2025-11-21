@@ -14,19 +14,23 @@
     
   tasks:
     - name: Display GNOME configuration plan
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 2
+        prompt: |
+
           🖥️ NOX VFX GNOME Configuration
-          
+
           Target: {{ inventory_hostname }}
-          
+
           🎨 Configuration:
           • Dark Theme: {{ 'Yes' if enable_dark_theme else 'No' }}
           • Extensions: {{ 'Yes' if install_extensions else 'No' }}
           • VFX Optimizations: {{ 'Yes' if optimize_for_vfx else 'No' }}
           • Compatible with: Local sessions, X11, Wayland, Nice DCV
-          
+
           🎯 This will create a professional, VFX-optimized desktop environment
+
+          Starting in 2 seconds...
 
     # ====== GNOME EXTENSIONS INSTALLATION ======
     - name: Install GNOME extensions and tools
@@ -565,10 +569,12 @@
         mode: '0755'
 
     - name: Display GNOME configuration completion
-      ansible.builtin.debug:
-        msg: |
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
           🎨 NOX VFX GNOME Configuration Complete!
-          
+
           ✅ Applied Settings:
           • Dark theme (Adwaita-dark)
           • VFX-optimized interface
@@ -576,27 +582,27 @@
           • Power settings for workstations
           • File manager optimizations
           {{ '• Nice DCV optimizations' if dcv_installed.stat.exists else '' }}
-          
+
           🔧 Extensions Enabled:
           • Dash to Dock
           • User Theme
           • Desktop Icons
-          
+
           🖥️ Compatible With:
           • Local GNOME sessions
           • X11 sessions
           • Wayland sessions
           • Nice DCV remote sessions
-          
+
           📋 Verification:
           Run as user: /usr/local/bin/verify-nox-gnome.sh
           Check logs: /tmp/nox-gnome-config-USERNAME.log
-          
+
           🔄 Changes take effect:
           • Immediately for logged-in users
           • At next login for new sessions
           • Automatically on DCV session start
-          
+
           ℹ️  User customizations (like Dash position) are preserved after first login!
 
   handlers:
