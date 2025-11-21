@@ -1,0 +1,7 @@
+---
+# Role: local_cache
+# TODO: migrate tasks from playbooks/local-cache.yml here
+
+- name: Local cache placeholder
+  ansible.builtin.debug:
+    msg: "Local cache role placeholder - migrate from playbooks/local-cache.yml"

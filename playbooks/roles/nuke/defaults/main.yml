@@ -1,0 +1,16 @@
+---
+# Nuke installation defaults
+nuke_installer: "Nuke{{ nuke_version }}v{{ nuke_patch }}-linux-x86_64.run"
+nuke_installer_dir: "/tmp"
+nuke_install_dir: "{{ software_install_base | default('/opt') }}"
+
+# License server - uses centralized config from group_vars/all.yml
+foundry_license: "{{ license_servers.foundry }}"
+nuke_path: "{{ nuke_path }}"
+ad_home_base: "{{ ad_home_base }}"
+
+# Version-specific defaults (override in playbook)
+nuke_version: "15.2"
+nuke_patch: "3"
+nuke_major_version: "15"
+nuke_executable_name: "Nuke{{ nuke_version }}"

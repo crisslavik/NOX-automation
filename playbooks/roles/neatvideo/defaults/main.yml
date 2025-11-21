@@ -1,0 +1,17 @@
+---
+# Installation paths
+install_base: "/usr/local/Neat Video v5 OFX"
+ofx_plugin_path: "/usr/OFX/Plugins"
+neatvideo_expected_installer: "/tmp/neatvideo_installer.zip"
+
+# AD user settings
+ad_domain: "ad.noxvfx.com"
+ad_home_base: "/home/{{ ad_domain }}"
+skel_path: "/etc/skel"
+
+# License settings
+license_server: "5053@license"
+
+# Plugin configuration paths
+neatvideo_config_dir: ".neatvideo"
+neatvideo_temp_base: "/var/tmp/neatvideo"

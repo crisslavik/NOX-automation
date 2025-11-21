@@ -1,0 +1,4 @@
+---
+# Archived wrapper for vsCode role
+- import_role:
+    name: vscode

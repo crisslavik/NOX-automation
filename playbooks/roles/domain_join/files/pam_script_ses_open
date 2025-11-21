@@ -1,0 +1,19 @@
+#!/bin/bash
+# This script runs when a user logs in
+
+/usr/share/libpam-script/pam_script_homedir_fix.sh
+/usr/share/libpam-script/pam_script_config_setup.sh
+
+# Mount admin shares if user is nox-admin
+if id -nG "$PAM_USER" | grep -qw "nox-admins"; then
+    {% for mount in nfs_mounts_noxadmins %}
+    if ! mountpoint -q /mnt/{{ mount.dest }}; then
+        mkdir -p /mnt/{{ mount.dest }} 2>/dev/null
+        mount -t nfs -o rw {{ nfs_server }}:{{ mount.src }} /mnt/{{ mount.dest }} 2>/dev/null || true
+    fi
+    {% endfor %}
+fi
+
+/usr/share/libpam-script/pam_script_bookmarks.sh
+
+exit 0

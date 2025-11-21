@@ -1,6 +1,6 @@
 ---
 - name: Dump Storage Facts for Debugging
-  hosts: nox-cmp-04,nox-cmp-06
+  hosts: all
   gather_facts: no
   tasks:
     - name: Gather only storage facts

@@ -3,13 +3,9 @@
 - name: Install Google Chrome via Flatpak
   hosts: all
   become: yes
-    
-  tasks:
-    - name: Install Flatpak package
-      ansible.builtin.dnf:
-        name: flatpak
-        state: present
-    
+    ---
+    - import_role:
+        name: chrome
     - name: Add Flathub repository
       ansible.builtin.command:
         cmd: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo

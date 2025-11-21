@@ -23,17 +23,8 @@
           ║  Target: {{ inventory_hostname }}                            ║
           ╚══════════════════════════════════════════════════════════════╝
 
-# Step 1: Domain Join
-- import_playbook: domain-join.yml
-
-# Step 2: Software Installation  
-- import_playbook: software-install.yml
-
-# Step 3: Wallpaper Setup
-- import_playbook: wallpaper.yml
-
-# Step 4: GNOME Configuration
-- import_playbook: gnome-config.yml
+# Use the consolidated site playbook (roles-based)
+- import_playbook: site.yml
 
 # Final summary
 - name: NOX VFX Setup Complete

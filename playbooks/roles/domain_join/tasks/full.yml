@@ -1,0 +1,213 @@
+---
+# Full domain join tasks (migrated from playbooks/domain-join.yml)
+- name: Ensure optional system update
+  ansible.builtin.dnf:
+    name: '*'
+    state: latest
+  when: update_system | default(false)
+  register: system_update
+
+- name: Reboot if kernel was updated
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+  when: system_update is defined and system_update.changed and 'kernel' in (system_update.results | string)
+
+- name: Install required packages for domain joining
+  ansible.builtin.dnf:
+    name:
+      - realmd
+      - sssd
+      - oddjob
+      - oddjob-mkhomedir
+      - adcli
+      - samba-common-tools
+      - krb5-workstation
+      - nfs-utils
+      - autofs
+      - policycoreutils-python-utils
+    state: present
+
+- name: Start and enable required services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - realmd
+    - sssd
+    - oddjobd
+
+- name: Check if system is already joined to domain
+  ansible.builtin.command: realm list
+  register: realm_status
+  changed_when: false
+  failed_when: false
+
+- name: Discover the domain
+  ansible.builtin.command: "realm discover {{ domain_name }}"
+  register: realm_discover
+  when: domain_name not in realm_status.stdout
+
+- name: Prompt for domain admin password if not provided
+  ansible.builtin.pause:
+    prompt: "Enter password for {{ domain_admin_user }}"
+    echo: no
+  register: password_prompt
+  when:
+    - domain_admin_password == ""
+    - domain_name not in realm_status.stdout
+
+- name: Set domain password from prompt
+  ansible.builtin.set_fact:
+    domain_admin_password: "{{ password_prompt.user_input }}"
+  when: password_prompt is defined and password_prompt.user_input is defined
+
+- name: Join the domain (interactive via expect)
+  ansible.builtin.expect:
+    command: "realm join -U {{ domain_admin_user }} {{ domain_controller }} -v"
+    responses:
+      Password for *: "{{ domain_admin_password }}"
+    timeout: 60
+  register: domain_join_result
+  when: domain_name not in realm_status.stdout
+
+- name: Display domain join results
+  ansible.builtin.debug:
+    var: domain_join_result
+  when: domain_join_result is defined
+
+- name: Template sssd.conf
+  ansible.builtin.template:
+    src: sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    mode: '0600'
+  notify: restart sssd
+
+- name: Configure SELinux file context for AD home directories
+  ansible.builtin.command: semanage fcontext -a -t user_home_dir_t "/home/{{ domain_name }}(/.*)?"
+  register: semanage_result
+  failed_when: false
+  changed_when: semanage_result.rc == 0
+
+- name: Apply SELinux contexts to existing AD home directories
+  ansible.builtin.command: restorecon -R -v /home/{{ domain_name }}/
+  when: semanage_result.rc == 0
+  ignore_errors: yes
+
+- name: Create PAM script directory
+  ansible.builtin.file:
+    path: /usr/share/libpam-script
+    state: directory
+    mode: '0755'
+
+- name: Copy PAM helper scripts
+  ansible.builtin.copy:
+    src: "files/{{ item }}"
+    dest: "/usr/share/libpam-script/{{ item }}"
+    mode: '0755'
+  loop:
+    - pam_script_homedir_fix.sh
+    - pam_script_config_setup.sh
+    - pam_script_bookmarks.sh
+    - pam_script_ses_open
+
+- name: Add domain groups to sudoers
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    line: "{{ item }}"
+    state: present
+    validate: 'visudo -cf %s'
+    backup: yes
+  loop:
+    - "%domain\\ admins ALL=(ALL:ALL) ALL"
+    - "%nox-admins ALL=(ALL:ALL) ALL"
+
+- name: Configure idmapd.conf for NFS
+  ansible.builtin.lineinfile:
+    path: /etc/idmapd.conf
+    regexp: '^#?Domain\s*='
+    line: "Domain = {{ domain_name }}"
+    backup: yes
+
+- name: Configure autofs master map for direct mounts (no timeout)
+  ansible.builtin.lineinfile:
+    path: /etc/auto.master
+    regexp: '^/[-mnt]'
+    line: "/- /etc/auto.direct --timeout=0"
+    state: present
+    backup: yes
+  notify: restart autofs
+
+- name: Create autofs direct map file for public mounts ONLY
+  ansible.builtin.template:
+    src: auto.direct.j2
+    dest: /etc/auto.direct
+    mode: '0644'
+  notify: restart autofs
+
+- name: Start and enable autofs service
+  ansible.builtin.systemd:
+    name: autofs
+    state: started
+    enabled: yes
+
+- name: Get nox-admins group GID
+  ansible.builtin.command: getent group nox-admins
+  register: noxadmins_group
+  changed_when: false
+  failed_when: false
+
+- name: Extract nox-admins GID
+  ansible.builtin.set_fact:
+    noxadmins_gid: "{{ noxadmins_group.stdout.split(':')[2] }}"
+  when: noxadmins_group.rc == 0
+
+- name: Ensure Library directory exists and set permissions for nox-admins
+  ansible.builtin.file:
+    path: /mnt/Library
+    owner: root
+    group: "{{ noxadmins_gid | default('root') }}"
+    mode: '2775'
+    state: directory
+  when: noxadmins_gid is defined
+
+- name: Copy PAM session script to /usr/share/libpam-script/pam_script_ses_open
+  ansible.builtin.copy:
+    src: files/pam_script_ses_open
+    dest: /usr/share/libpam-script/pam_script_ses_open
+    mode: '0755'
+    backup: yes
+
+- name: Configure PAM to use the script
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/system-auth
+    line: "session optional pam_exec.so /usr/share/libpam-script/pam_script_ses_open"
+    insertafter: "^session.*pam_systemd"
+    state: present
+    backup: yes
+
+- name: Test NFS connectivity
+  ansible.builtin.command: "showmount -e {{ nfs_server }}"
+  register: nfs_exports
+  failed_when: false
+  changed_when: false
+
+- name: Display NFS exports
+  ansible.builtin.debug:
+    msg: "Available NFS exports: {{ nfs_exports.stdout_lines }}"
+  when: nfs_exports.rc == 0
+
+- name: Verify domain join status
+  ansible.builtin.command: realm list
+  register: final_realm_status
+  changed_when: false
+
+- name: Display final domain status
+  ansible.builtin.debug:
+    msg: "Domain join status: {{ 'SUCCESS' if domain_name in final_realm_status.stdout else 'FAILED' }}"
+
+- name: Reboot system to complete domain join
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    msg: "Rebooting to complete domain join process"
+  when: domain_join_result is defined and domain_join_result.changed

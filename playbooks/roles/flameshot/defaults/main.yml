@@ -1,0 +1,7 @@
+---
+# Default variables for flameshot role
+flameshot_install_method: "flatpak"  # options: flatpak, dnf
+flameshot_configure_shortcuts: true
+---
+# Flameshot defaults
+flameshot_configure_shortcuts: true

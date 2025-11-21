@@ -1,0 +1,94 @@
+---
+- name: Check for DaVinci Resolve installer
+  stat:
+    path: "{{ davinci_installer }}"
+  register: davinci_installer_stat
+
+- name: Davinci installer missing debug
+  debug:
+    msg: "DaVinci Resolve installer not found at {{ davinci_installer }}. Place it on the target host or set 'davinci_installer' variable."
+  when: not davinci_installer_stat.stat.exists
+
+# TODO: add steps to run the .run installer non-interactively or document manual steps
+---
+- name: Install dependencies for DaVinci Resolve
+  dnf:
+    name:
+      - epel-release
+      - apr
+      - apr-util
+      - libxcb
+      - xcb-util
+      - xcb-util-wm
+      - xcb-util-image
+      - xcb-util-keysyms
+      - xcb-util-renderutil
+      - xcb-util-cursor
+      - libxkbcommon
+      - libxkbcommon-x11
+      - libXrandr
+      - libXinerama
+      - libXcursor
+      - mesa-libGLU
+      - libglvnd-glx
+      - libglvnd-egl
+      - libglvnd-opengl
+      - ocl-icd
+      - opencl-headers
+      - libxcrypt-compat
+      - alsa-lib
+      - pulseaudio-libs
+      - unzip
+      - postgresql
+    state: present
+
+- name: Check for DaVinci Resolve installer on target
+  stat:
+    path: "{{ resolve_installer }}"
+  register: resolve_installer_stat
+
+- name: DaVinci installer removed from repo
+  debug:
+    msg: "DaVinci Resolve installer is not tracked in the repository. To enable automatic install, place the installer at {{ resolve_installer }} on the target host."
+
+- name: Apply Resolve configuration (skel and database settings)
+  block:
+    - name: Create shared Resolve projects directory
+      file:
+        path: "{{ resolve_projects_path }}"
+        state: directory
+        mode: '0777'
+
+    - name: Ensure /etc/skel Resolve config directory
+      file:
+        path: /etc/skel/.local/share/DaVinciResolve/configs
+        state: directory
+        mode: '0755'
+
+    - name: Create .pgpass in /etc/skel
+      copy:
+        content: "{{ db_host }}:{{ db_port }}:{{ db_name }}:{{ db_user }}:{{ db_password }}"
+        dest: /etc/skel/.pgpass
+        mode: '0600'
+
+    - name: Create preferences.xml for centralized database
+      copy:
+        content: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <preferences>
+            <ResolveDatabase>
+              <DatabaseType>PostgreSQL</DatabaseType>
+              <DatabaseHost>{{ db_host }}</DatabaseHost>
+              <DatabasePort>{{ db_port }}</DatabasePort>
+              <DatabaseName>{{ db_name }}</DatabaseName>
+              <DatabaseUser>{{ db_user }}</DatabaseUser>
+            </ResolveDatabase>
+            <ProjectLibrary>
+              <ProjectPath>{{ resolve_projects_path }}</ProjectPath>
+            </ProjectLibrary>
+            <CacheClipsLocation>$HOME/.cache/resolve/CacheClip</CacheClipsLocation>
+            <GalleryStillsLocation>$HOME/.cache/resolve/Gallery</GalleryStillsLocation>
+            <ProxyMediaLocation>$HOME/.cache/resolve/Proxy</ProxyMediaLocation>
+          </preferences>
+        dest: /etc/skel/.local/share/DaVinciResolve/configs/preferences.xml
+        mode: '0644'

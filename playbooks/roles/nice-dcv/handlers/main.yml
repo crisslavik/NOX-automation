@@ -1,0 +1,9 @@
+---
+- name: restart sssd
+  ansible.builtin.systemd:
+    name: sssd.service
+    state: restarted
+
+- name: daemon reload
+  ansible.builtin.systemd:
+    daemon_reload: yes

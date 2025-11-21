@@ -3,13 +3,9 @@
 - name: Install Visual Studio Code
   hosts: all
   become: yes
-    
-  tasks:
-    - name: Import Microsoft GPG key
-      ansible.builtin.rpm_key:
-        state: present
-        key: https://packages.microsoft.com/keys/microsoft.asc
-
+    ---
+    - import_role:
+        name: vscode
     - name: Add Visual Studio Code repository
       ansible.builtin.yum_repository:
         name: vscode

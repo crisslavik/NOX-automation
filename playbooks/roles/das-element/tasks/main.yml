@@ -1,0 +1,166 @@
+---
+- name: Install libXScrnSaver dependency
+  ansible.builtin.yum:
+    name: libXScrnSaver
+    state: present
+
+- name: Check for DasElement RPM on target
+  ansible.builtin.stat:
+    path: "{{ daselement_expected_rpm }}"
+  register: daselement_rpm_stat
+  changed_when: false
+
+- name: DasElement RPM installation note
+  ansible.builtin.debug:
+    msg: |
+      ⚠️ DasElement RPM install step has been disabled in repo.
+      If you want automatic installation, place the RPM at {{ daselement_expected_rpm }} on the target host.
+  when: not daselement_rpm_stat.stat.exists
+
+# ========================================
+# Lite Version: System-wide Environment
+# ========================================
+- name: Create system-wide DasElement environment variables (Lite version)
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/daselement.sh
+    regexp: '^export {{ item.key }}='
+    line: 'export {{ item.key }}={{ item.value }}'
+    create: yes
+    mode: '0644'
+  loop:
+    - { key: 'DASELEMENT_LICENSE', value: '{{ daselement_license_server }}' }
+    - { key: 'DASELEMENT_CONFIG_PATH', value: '{{ daselement_config_path }}' }
+    - { key: 'DASELEMENT_RESOURCES', value: '{{ daselement_resources_path }}' }
+  when: daselement_variant == 'lite'
+
+- name: Create DasElement configuration wrapper script (Lite version)
+  ansible.builtin.copy:
+    dest: /usr/local/bin/das-element-lite-wrapper.sh
+    mode: '0755'
+    force: yes
+    content: |
+      #!/bin/bash
+      # Auto-configure DasElement Lite before launch
+
+      DASELEMENT_DIR="$HOME/.das-element"
+      VARIABLES_FILE="$DASELEMENT_DIR/variables.env"
+
+      # Create directory if it doesn't exist
+      if [ ! -d "$DASELEMENT_DIR" ]; then
+          mkdir -p "$DASELEMENT_DIR"
+      fi
+
+      # Always ensure variables.env is correct
+      cat > "$VARIABLES_FILE" << 'EOF'
+      #### point to the license server
+      DASELEMENT_LICENSE={{ daselement_license_server }}
+
+      #### path to the config file (.conf)
+      DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+
+      #### path to the resources folder, for presets, hooks, etc.
+      DASELEMENT_RESOURCES={{ daselement_resources_path }}
+      EOF
+
+      # Launch DasElement Lite with original binary
+      exec {{ daselement_install_path }}/das-element-lite-{{ daselement_lite_version }} "$@"
+  when: daselement_variant == 'lite'
+
+- name: Find system-wide DasElement desktop launcher file (Lite version)
+  ansible.builtin.find:
+    paths:
+      - /usr/share/applications
+      - "{{ daselement_install_path }}"
+    patterns: '*das-element*.desktop'
+    recurse: yes
+  register: system_desktop_files
+  when: daselement_variant == 'lite'
+
+- name: Update system desktop launcher to use wrapper script (Lite version)
+  ansible.builtin.lineinfile:
+    path: "{{ item.path }}"
+    regexp: '^Exec='
+    line: 'Exec=/usr/local/bin/das-element-lite-wrapper.sh'
+    backup: yes
+  loop: "{{ system_desktop_files.files }}"
+  when:
+    - daselement_variant == 'lite'
+    - system_desktop_files.files | length > 0
+
+- name: Find user-specific desktop launchers (Lite version)
+  ansible.builtin.find:
+    paths:
+      - /home
+      - /home/ad.noxvfx.com
+    patterns: '*das-element*.desktop'
+    recurse: yes
+  register: user_desktop_files
+  when: daselement_variant == 'lite'
+
+- name: Update user desktop launchers to use wrapper script (Lite version)
+  ansible.builtin.lineinfile:
+    path: "{{ item.path }}"
+    regexp: '^Exec='
+    line: 'Exec=/usr/local/bin/das-element-lite-wrapper.sh'
+    backup: yes
+  loop: "{{ user_desktop_files.files }}"
+  when:
+    - daselement_variant == 'lite'
+    - user_desktop_files.files | length > 0
+
+# ========================================
+# Full Version: Per-user Configuration
+# ========================================
+- name: Create system-wide das-element defaults directory (Full version)
+  ansible.builtin.file:
+    path: /etc/skel/.das-element
+    state: directory
+    mode: '0755'
+  when: daselement_variant == 'full'
+
+- name: Create default variables.env in /etc/skel for new users (Full version)
+  ansible.builtin.copy:
+    dest: /etc/skel/.das-element/variables.env
+    mode: '0644'
+    force: yes
+    content: |
+      #### point to the license server
+      DASELEMENT_LICENSE={{ daselement_license_server }}
+
+      #### path to the config file (.conf)
+      DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+
+      #### path to the resources folder, for presets, hooks, etc.
+      DASELEMENT_RESOURCES={{ daselement_resources_path }}
+  when: daselement_variant == 'full'
+
+# ========================================
+# Common: Update Existing Users
+# ========================================
+- name: Find all .das-element directories for existing users
+  ansible.builtin.find:
+    paths:
+      - /home
+      - /home/ad.noxvfx.com
+    patterns: '.das-element'
+    file_type: directory
+    recurse: yes
+    hidden: yes
+  register: das_element_dirs
+
+- name: Overwrite variables.env file with environment variables for all existing users
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/variables.env"
+    mode: '0644'
+    force: yes
+    content: |
+      #### point to the license server
+      DASELEMENT_LICENSE={{ daselement_license_server }}
+
+      #### path to the config file (.conf)
+      DASELEMENT_CONFIG_PATH={{ daselement_config_path }}
+
+      #### path to the resources folder, for presets, hooks, etc.
+      DASELEMENT_RESOURCES={{ daselement_resources_path }}
+  loop: "{{ das_element_dirs.files }}"
+  when: das_element_dirs.files | length > 0

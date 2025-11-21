@@ -1,0 +1,21 @@
+---
+- name: Check for Deadline client installer
+  stat:
+    path: "{{ deadline_client_installer }}"
+  register: deadline_installer
+
+- name: Deadline client missing message
+  debug:
+    msg: "Deadline client installer not found. Place the installer at {{ deadline_client_installer }} on the target host or set the variable accordingly."
+  when: not deadline_installer.stat.exists
+
+# TODO: add installation tasks using dnf/copy/command as appropriate
+---
+- name: Check for Deadline client installer
+  stat:
+    path: "{{ deadline_installer_path }}"
+  register: deadline_installer_stat
+
+- name: Deadline installer removed from repo
+  debug:
+    msg: "Deadline client installer is not tracked. Place installer at {{ deadline_installer_path }} to enable automatic installation."

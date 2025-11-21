@@ -1,0 +1,4 @@
+---
+# Defaults for Brave role
+browser_brave_package: brave-browser
+browser_brave_flatpak_name: com.brave.Browser

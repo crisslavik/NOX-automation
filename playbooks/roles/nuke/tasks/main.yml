@@ -1,0 +1,241 @@
+---
+# Step 1: Install Dependencies
+- name: Install required dependencies
+  ansible.builtin.dnf:
+    name:
+      - numactl-libs           # Required by Nablet H264 Codec SDK
+      - mesa-libGL             # OpenGL library
+      - mesa-libGLU            # OpenGL utility library
+      - libglvnd-opengl        # Vendor-neutral OpenGL dispatch library (provides libOpenGL.so.0)
+      - libglvnd-glx           # GLX support
+    state: present
+  tags:
+    - install
+    - dependencies
+
+# Step 2: Check for installer
+- name: Check if Nuke installer exists on target
+  ansible.builtin.stat:
+    path: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
+  register: nuke_installer_stat
+  changed_when: false
+  tags:
+    - install
+
+- name: Check if Nuke is already installed
+  ansible.builtin.stat:
+    path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }}"
+  register: nuke_installed
+  tags:
+    - install
+
+# Step 3: Install Nuke
+- name: Install Nuke to /opt directory (if installer present and not installed)
+  ansible.builtin.command: >
+    {{ nuke_installer_dir }}/{{ nuke_installer }} --prefix={{ nuke_install_dir }} --accept-foundry-eula
+  when:
+    - not nuke_installed.stat.exists
+    - nuke_installer_stat.stat.exists
+  tags:
+    - install
+
+- name: Display installation status
+  ansible.builtin.debug:
+    msg: "{{ '✅ Nuke ' + nuke_version + ' already installed' if nuke_installed.stat.exists else ('⚠️ Nuke installer not found at ' + nuke_installer_dir + '/' + nuke_installer + '. Installation skipped.') if not nuke_installer_stat.stat.exists else '✅ Nuke ' + nuke_version + ' installed successfully' }}"
+  tags:
+    - install
+
+- name: Remove installer after installation
+  ansible.builtin.file:
+    path: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
+    state: absent
+  when: nuke_installer_stat.stat.exists
+  tags:
+    - install
+
+# Step 4: Configure Environment Variables (IDEMPOTENT - version-specific file)
+- name: Add foundry_LICENSE environment variable (idempotent)
+  ansible.builtin.lineinfile:
+    path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
+    create: yes
+    mode: '0644'
+    line: "export foundry_LICENSE={{ foundry_license }}"
+    regexp: '^export foundry_LICENSE='
+  tags:
+    - config
+    - environment
+
+- name: Add NUKE_PATH environment variable (idempotent)
+  ansible.builtin.lineinfile:
+    path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
+    create: yes
+    mode: '0644'
+    line: "export NUKE_PATH={{ nuke_path }}"
+    regexp: '^export NUKE_PATH='
+  tags:
+    - config
+    - environment
+
+# Step 5: Create GNOME Desktop Icons in /etc/skel
+- name: Create .local/share/applications directory in /etc/skel
+  ansible.builtin.file:
+    path: /etc/skel/.local/share/applications
+    state: directory
+    mode: '0755'
+  tags:
+    - desktop
+
+- name: Create Nuke desktop entry in /etc/skel
+  ansible.builtin.copy:
+    dest: "/etc/skel/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Version=1.0
+      Type=Application
+      Name=Nuke {{ nuke_version }}
+      Comment=Foundry Nuke Compositor
+      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} %f
+      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}/plugins/icons/NukeApp256.png
+      Terminal=false
+      Categories=Graphics;2DGraphics;VFX;
+      MimeType=application/x-nuke;
+  tags:
+    - desktop
+
+- name: Create NukeX desktop entry in /etc/skel
+  ansible.builtin.copy:
+    dest: "/etc/skel/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Version=1.0
+      Type=Application
+      Name=NukeX {{ nuke_version }}
+      Comment=Foundry NukeX Compositor
+      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} --nukex %f
+      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}/plugins/icons/NukeApp256.png
+      Terminal=false
+      Categories=Graphics;2DGraphics;VFX;
+      MimeType=application/x-nuke;
+  tags:
+    - desktop
+
+- name: Create Nuke Studio desktop entry in /etc/skel
+  ansible.builtin.copy:
+    dest: "/etc/skel/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Version=1.0
+      Type=Application
+      Name=Nuke Studio {{ nuke_version }}
+      Comment=Foundry Nuke Studio
+      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} --studio %f
+      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}/plugins/icons/NukeApp256.png
+      Terminal=false
+      Categories=Graphics;2DGraphics;VFX;
+      MimeType=application/x-nuke;
+  tags:
+    - desktop
+
+# Step 6: Deploy Desktop Icons to Existing AD Users
+- name: Find all existing AD user home directories
+  ansible.builtin.find:
+    paths: "{{ ad_home_base }}"
+    file_type: directory
+    recurse: no
+  register: ad_users
+  failed_when: false
+  tags:
+    - desktop
+
+- name: Create .local/share/applications for existing users
+  ansible.builtin.file:
+    path: "{{ item.path }}/.local/share/applications"
+    state: directory
+    mode: '0755'
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.path | basename }}"
+  loop: "{{ ad_users.files }}"
+  when: ad_users.files is defined and ad_users.files | length > 0
+  failed_when: false
+  tags:
+    - desktop
+
+- name: Deploy Nuke desktop entry to existing users
+  ansible.builtin.copy:
+    src: "/etc/skel/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
+    dest: "{{ item.path }}/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
+    remote_src: yes
+    mode: '0755'
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.path | basename }}"
+  loop: "{{ ad_users.files }}"
+  when: ad_users.files is defined and ad_users.files | length > 0
+  failed_when: false
+  tags:
+    - desktop
+
+- name: Deploy NukeX desktop entry to existing users
+  ansible.builtin.copy:
+    src: "/etc/skel/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
+    dest: "{{ item.path }}/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
+    remote_src: yes
+    mode: '0755'
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.path | basename }}"
+  loop: "{{ ad_users.files }}"
+  when: ad_users.files is defined and ad_users.files | length > 0
+  failed_when: false
+  tags:
+    - desktop
+
+- name: Deploy Nuke Studio desktop entry to existing users
+  ansible.builtin.copy:
+    src: "/etc/skel/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
+    dest: "{{ item.path }}/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
+    remote_src: yes
+    mode: '0755'
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.path | basename }}"
+  loop: "{{ ad_users.files }}"
+  when: ad_users.files is defined and ad_users.files | length > 0
+  failed_when: false
+  tags:
+    - desktop
+
+- name: Update desktop database for existing users
+  ansible.builtin.command: update-desktop-database {{ item.path }}/.local/share/applications
+  loop: "{{ ad_users.files }}"
+  when: ad_users.files is defined and ad_users.files | length > 0
+  changed_when: false
+  failed_when: false
+  tags:
+    - desktop
+
+# Step 7: Verification
+- name: Verify Nuke installation
+  ansible.builtin.command: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} --version"
+  register: nuke_version_output
+  changed_when: false
+  failed_when: false
+  environment:
+    foundry_LICENSE: "{{ foundry_license }}"
+    NUKE_PATH: "{{ nuke_path }}"
+  when: nuke_installed.stat.exists
+  tags:
+    - verify
+
+- name: Display installation result
+  ansible.builtin.debug:
+    msg: |
+      ✅ Nuke {{ nuke_version }} Installation Complete!
+      Version: {{ nuke_version_output.stdout | default('Unable to detect - may need to login/logout') }}
+      Installation Path: {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }}
+      License Server: {{ foundry_license }}
+      NUKE_PATH: {{ nuke_path }}
+      ENV File: /etc/profile.d/nuke{{ nuke_major_version }}.sh
+  when: nuke_installed.stat.exists
+  tags:
+    - verify

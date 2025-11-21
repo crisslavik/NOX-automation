@@ -1,0 +1,15 @@
+---
+# Installation settings
+daselement_package_name: "das-element"
+daselement_version: "latest"
+daselement_lite_version: "latest"
+daselement_install_path: "/opt/{{ daselement_package_name }}-{{ daselement_version }}"
+daselement_expected_rpm: "/tmp/das_element_installer.rpm"
+
+# Variant: 'full' or 'lite'
+daselement_variant: "full"
+
+# Environment variables
+daselement_license_server: "5053@license"
+daselement_config_path: "/mnt/Library/_daselement/das-element.conf"
+daselement_resources_path: "/mnt/Library/_daselement/resources"

@@ -1,23 +1,13 @@
 nox-workstation-automation/
 ├── files/
-│   ├── rpms/
-│   │   ├── browsers/     # Chrome, Brave RPMs
-│   │   ├── editors/      # VS Code, Sublime RPMs  
-│   │   ├── vfx/          # Krita, Blender, PureRef RPMs
-│   │   └── communication/ # Slack RPM
-│   ├── wallpapers/       # NOX branding assets
-│   └── scripts/          # RPM management scripts
+│   ├── rpms/                # RPMs if you choose to keep them locally (not recommended)
+│   ├── wallpapers/          # NOX branding assets
+│   └── scripts/             # Utility scripts
 ├── playbooks/
-│   ├── software/         # Individual software installers
-│   │   ├── install-chrome.yml
-│   │   ├── install-brave.yml
-│   │   ├── install-vscode.yml
-│   │   ├── install-sublime.yml
-│   │   ├── install-krita.yml
-│   │   ├── install-blender.yml
-│   │   ├── install-pureref.yml ✨ NEW!
-│   │   └── install-all-software.yml
-│   ├── domain-join.yml
-│   ├── wallpaper.yml
-│   ├── gnome-config.yml
-│   └── custom-software.yml
+│   ├── site.yml             # Role-based entrypoint for the whole site
+│   ├── roles/               # Ansible roles (e.g. nice-dcv, xstudio, brave...)
+│   └── softwares/           # Thin wrappers that import roles for compatibility
+
+# Policy: installer blobs (.rpm, .run, .zip) are not stored in this repo.
+# Place proprietary installers on the target hosts under /tmp or configure
+# role defaults to point to the installer location before running a role.

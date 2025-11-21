@@ -1,77 +1,15 @@
 ---
-# Install PureRef from RPM
-- name: Install PureRef
+---
+# PureRef requires manual download; we no longer handle local RPM installs.
+- name: PureRef installation skipped (RPMs removed)
   hosts: all
   become: yes
-  vars:
-    pureref_rpm_file: "vfx/pureref-1.11.1.rpm"
-    pureref_download_url: "https://www.pureref.com/download.php"
-    
   tasks:
-    - name: Check if PureRef RPM exists
-      ansible.builtin.stat:
-        path: "{{ pureref_rpm_file }}"
-      register: pureref_rpm_check
-      delegate_to: localhost
-      become: no
-
-    - name: Display PureRef download notice if RPM missing
+    - name: Inform user to download PureRef manually
       ansible.builtin.debug:
         msg: |
-          ⚠️  PureRef RPM not found at {{ pureref_rpm_file }}
-          
-          To download PureRef:
-          1. Visit: {{ pureref_download_url }}
-          2. Download the Linux .rpm version
-          3. Save as: files/{{ pureref_rpm_file }}
-          4. Re-run this playbook
-          
-          Note: PureRef requires manual download (no direct URL available)
-      when: not pureref_rpm_check.stat.exists
-
-    - name: Skip PureRef installation if RPM not available
-      ansible.builtin.meta: end_host
-      when: not pureref_rpm_check.stat.exists
-
-    - name: Copy PureRef RPM to target machine
-      ansible.builtin.copy:
-        src: "{{ pureref_rpm_file }}"
-        dest: "/tmp/pureref.rpm"
-        mode: '0644'
-
-    - name: Install PureRef from RPM
-      ansible.builtin.dnf:
-        name: "/tmp/pureref.rpm"
-        state: present
-        disable_gpg_check: yes
-      register: pureref_install
-
-    - name: Verify PureRef installation
-      ansible.builtin.stat:
-        path: /usr/bin/PureRef
-      register: pureref_binary
-
-    - name: Display PureRef installation status
-      ansible.builtin.debug:
-        msg: "✅ PureRef installed successfully"
-      when: pureref_binary.stat.exists
-
-    - name: Clean up temporary RPM file
-      ansible.builtin.file:
-        path: "/tmp/pureref.rpm"
-        state: absent
-
-    - name: Create PureRef desktop entry (if missing)
-      ansible.builtin.copy:
-        content: |
-          [Desktop Entry]
-          Name=PureRef
-          Comment=Reference Image Viewer
-          Exec=/usr/bin/PureRef
-          Icon=pureref
-          Terminal=false
-          Type=Application
-          Categories=Graphics;Photography;Viewer;
-        dest: /usr/share/applications/pureref.desktop
-        mode: '0644'
-      when: pureref_binary.stat.exists
+          ⚠️  PureRef installation has been disabled in this repository (RPM installs removed).
+          ---
+          - import_role:
+              name: pureref
+          2. Install it manually or add it to a private RPM repo and use dnf.

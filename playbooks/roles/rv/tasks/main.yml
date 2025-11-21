@@ -1,0 +1,19 @@
+---
+- name: Check for RV installer
+  stat:
+    path: "{{ rv_installer }}"
+  register: rv_installer_stat
+
+- name: RV installer missing message
+  debug:
+    msg: "RV installer not found at {{ rv_installer }}; place on target host to enable installation."
+  when: not rv_installer_stat.stat.exists
+---
+- name: Check for RV installer
+  stat:
+    path: "{{ rv_installer }}"
+  register: rv_installer_stat
+
+- name: RV installer missing message
+  debug:
+    msg: "RV installer is not tracked. Place the installer at {{ rv_installer }} to enable automatic installation."

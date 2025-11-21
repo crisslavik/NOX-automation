@@ -1,0 +1,14 @@
+#!/bin/bash
+# Apply NOX VFX GNOME configuration for GNOME sessions
+# Works with local sessions, X11, Wayland, and DCV
+
+# Only run in GNOME sessions
+if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ]; then
+    # Check if we have a display (X11 or Wayland)
+    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+        # Run in background with delay to ensure GNOME Shell is ready
+        # Use nohup to prevent hanging terminal sessions
+        (sleep 20 && /usr/local/bin/set-nox-gnome-config.sh) > /dev/null 2>&1 &
+        disown
+    fi
+fi

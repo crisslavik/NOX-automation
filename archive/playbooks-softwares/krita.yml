@@ -1,0 +1,24 @@
+---
+# Archived: krita.yml (flatpak install + role import)
+---
+# Install Krita via Flatpak (RPM installs removed)
+- name: Install Krita (flatpak)
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure flatpak is installed
+      ansible.builtin.dnf:
+        name: flatpak
+        state: present
+---
+- import_role:
+    name: krita
+    - name: Install Krita via Flatpak
+      ansible.builtin.command:
+        cmd: flatpak install -y flathub org.kde.krita
+      register: krita_install
+      failed_when: krita_install.rc != 0
+
+    - name: Display Krita installation status
+      ansible.builtin.debug:
+        msg: "✅ Krita installed via Flatpak"

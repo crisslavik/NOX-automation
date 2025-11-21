@@ -1,0 +1,11 @@
+---
+- name: update dconf
+  ansible.builtin.command: dconf update
+  changed_when: true
+
+- name: restart dcv
+  ansible.builtin.systemd:
+    name: dcvserver
+    state: restarted
+  ignore_errors: yes
+  when: dcv_installed is defined and dcv_installed.stat.exists

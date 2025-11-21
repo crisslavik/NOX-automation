@@ -1,0 +1,72 @@
+---
+# Site playbook: entrypoint for NOX automation
+# Use: ansible-playbook -i inventory playbooks/site.yml
+
+- name: NOX Workstation site playbook
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: domain_join
+      when: "ansible_distribution == 'AlmaLinux' or ansible_os_family == 'RedHat'"
+
+    - role: local_cache
+      when: "ansible_architecture == 'x86_64'"
+
+    - role: gnome
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: brave
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: slack
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: blender
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: davinci
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: deadline-client
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: neatvideo
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: nuke
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: rv
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: pureref
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: krita
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: das-element
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: xstudio
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: dev-util
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: nice-dcv
+      when: "ansible_facts['ansible_distribution'] == 'AlmaLinux' or ansible_os_family == 'RedHat'"
+
+    - role: flameshot
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: vscode
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: chrome
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"
+
+    - role: sublime
+      when: "ansible_facts['ansible_env'].XDG_CURRENT_DESKTOP is defined or true"

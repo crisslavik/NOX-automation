@@ -1,0 +1,226 @@
+---
+# NOX VFX Site Basic Playbook
+# Essential system setup for NOX workstations
+# Use: ansible-playbook -i inventory playbooks/site-basic.yml
+#
+# This playbook installs the basic foundation for a NOX workstation:
+# 1. System updates
+# 2. Domain joining (AD integration)
+# 3. GNOME desktop configuration
+# 4. Local package cache
+# 5. NVIDIA drivers
+# 6. Company wallpaper
+# 7. Wake-on-LAN
+# 8. Nice DCV (remote desktop)
+# 9. Essential applications (Chrome, Sublime)
+
+- name: NOX VFX Basic Workstation Setup
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Configuration flags
+    skip_updates: false
+    skip_reboot: false
+    skip_domain_join: false
+
+  tasks:
+    - name: Display NOX Basic Setup Banner
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════╗
+          ║                                                          ║
+          ║          NOX VFX BASIC WORKSTATION SETUP                 ║
+          ║                                                          ║
+          ║  Target: {{ inventory_hostname }}                       ║
+          ║  OS: {{ ansible_distribution }} {{ ansible_distribution_version }}                                    ║
+          ║  Architecture: {{ ansible_architecture }}                ║
+          ║                                                          ║
+          ║  This will install the basic NOX VFX foundation          ║
+          ║                                                          ║
+          ╚══════════════════════════════════════════════════════════╝
+
+# ========================================
+# PHASE 1: System Updates
+# ========================================
+- name: "PHASE 1: System Updates"
+  ansible.builtin.import_playbook: update_linux.yml
+  when: not skip_updates | default(false)
+  tags:
+    - updates
+    - phase1
+
+# ========================================
+# PHASE 2: Domain Join & Authentication
+# ========================================
+- name: "PHASE 2: Active Directory Integration"
+  ansible.builtin.import_playbook: domain-join.yml
+  when: not skip_domain_join | default(false)
+  tags:
+    - domain
+    - authentication
+    - phase2
+
+# ========================================
+# PHASE 3: Desktop Environment
+# ========================================
+- name: "PHASE 3: GNOME Desktop Configuration"
+  ansible.builtin.import_playbook: gnome-config.yml
+  tags:
+    - desktop
+    - gnome
+    - phase3
+
+# ========================================
+# PHASE 4: Local Package Cache
+# ========================================
+- name: "PHASE 4: Local Package Cache Setup"
+  ansible.builtin.import_playbook: local-cache2.yml
+  tags:
+    - cache
+    - packages
+    - phase4
+
+# ========================================
+# PHASE 5: NVIDIA Drivers
+# ========================================
+- name: "PHASE 5: NVIDIA Official Drivers"
+  ansible.builtin.import_playbook: nvidia_official.yml
+  tags:
+    - nvidia
+    - drivers
+    - gpu
+    - phase5
+
+# ========================================
+# PHASE 6: Branding & Customization
+# ========================================
+- name: "PHASE 6: NOX Wallpaper & Branding"
+  ansible.builtin.import_playbook: wallpaper.yml
+  tags:
+    - branding
+    - wallpaper
+    - phase6
+
+# ========================================
+# PHASE 7: Network Configuration
+# ========================================
+- name: "PHASE 7: Wake-on-LAN Setup"
+  ansible.builtin.import_playbook: wol-setup.yml
+  tags:
+    - network
+    - wol
+    - phase7
+
+# ========================================
+# PHASE 8: Remote Access
+# ========================================
+- name: "PHASE 8: Nice DCV Remote Desktop"
+  ansible.builtin.import_playbook: softwares/niceDCV.yml
+  tags:
+    - remote
+    - dcv
+    - phase8
+
+# ========================================
+# PHASE 9: Essential Applications
+# ========================================
+- name: "PHASE 9A: Google Chrome"
+  ansible.builtin.import_playbook: softwares/chrome.yml
+  tags:
+    - applications
+    - chrome
+    - phase9
+
+- name: "PHASE 9B: Sublime Text"
+  ansible.builtin.import_playbook: softwares/sublime.yml
+  tags:
+    - applications
+    - sublime
+    - phase9
+
+# ========================================
+# COMPLETION
+# ========================================
+- name: NOX Basic Setup Complete
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create NOX setup completion marker
+      ansible.builtin.copy:
+        content: |
+          NOX VFX Basic Workstation Setup Complete
+          ==========================================
+
+          Hostname: {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+          Installed Components:
+          ✅ System updates
+          ✅ Active Directory integration ({{ 'SKIPPED' if skip_domain_join | default(false) else 'COMPLETED' }})
+          ✅ GNOME desktop configuration
+          ✅ Local package cache
+          ✅ NVIDIA official drivers
+          ✅ NOX wallpaper
+          ✅ Wake-on-LAN
+          ✅ Nice DCV remote desktop
+          ✅ Google Chrome
+          ✅ Sublime Text
+
+          Next Steps:
+          -----------
+          1. Reboot the system (if not done automatically)
+          2. Log in with AD credentials
+          3. Verify NVIDIA drivers: nvidia-smi
+          4. Test DCV connection
+          5. Install additional VFX software as needed (Nuke, Blender, etc.)
+
+          Playbook Used: site-basic.yml
+
+        dest: /etc/nox-setup-complete.txt
+        mode: '0644'
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════╗
+          ║                                                          ║
+          ║       ✅ NOX VFX BASIC SETUP COMPLETE! ✅                ║
+          ║                                                          ║
+          ║  Your workstation is now configured with:                ║
+          ║  • Updated system packages                               ║
+          ║  • Active Directory integration                          ║
+          ║  • GNOME dark theme & VFX optimizations                  ║
+          ║  • Local package cache                                   ║
+          ║  • NVIDIA official drivers                               ║
+          ║  • NOX branding & wallpaper                              ║
+          ║  • Wake-on-LAN enabled                                   ║
+          ║  • Nice DCV remote access                                ║
+          ║  • Chrome & Sublime Text                                 ║
+          ║                                                          ║
+          ║  📋 Setup details: /etc/nox-setup-complete.txt           ║
+          ║                                                          ║
+          ║  🔄 Next: Reboot and log in with AD credentials          ║
+          ║                                                          ║
+          ╚══════════════════════════════════════════════════════════╝
+
+    - name: Check if reboot is needed
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      ignore_errors: yes
+
+    - name: Recommend reboot
+      ansible.builtin.debug:
+        msg: |
+          ⚠️  REBOOT RECOMMENDED
+
+          A system reboot is recommended to:
+          • Activate NVIDIA drivers
+          • Complete kernel updates
+          • Apply all system changes
+
+          Run: sudo reboot
+      when: reboot_required.stat.exists | default(false) or not skip_reboot | default(false)

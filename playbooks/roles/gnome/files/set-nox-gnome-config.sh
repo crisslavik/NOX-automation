@@ -1,0 +1,176 @@
+#!/bin/bash
+# NOX VFX GNOME Theme and Configuration Script
+# Works with local sessions, X11, Wayland, and DCV virtual sessions
+
+LOG_FILE="/tmp/nox-gnome-config-$(whoami).log"
+CONFIG_FLAG="$HOME/.config/nox-gnome-configured"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "$(date): Starting NOX GNOME configuration for user $(whoami)"
+
+# Check if user has already been configured
+check_if_configured() {
+    if [ -f "$CONFIG_FLAG" ]; then
+        # Check if this is a forced reconfiguration
+        if [ "$1" != "--force" ]; then
+            echo "✅ NOX GNOME configuration already applied for this user"
+            echo "   Flag file: $CONFIG_FLAG"
+            echo "   To reconfigure, delete this file or run with --force"
+
+            # Only apply theme settings (non-intrusive)
+            apply_theme_only
+            exit 0
+        else
+            echo "🔄 Force reconfiguration requested"
+        fi
+    fi
+}
+
+# Detect display server and session info
+detect_session() {
+    # Try to get DISPLAY from environment or find it
+    if [ -z "$DISPLAY" ]; then
+        # Try to find DISPLAY from running processes
+        DISPLAY=$(ps e -u $(whoami) | grep -oP 'DISPLAY=\K[^ ]+' | head -1)
+        [ -z "$DISPLAY" ] && DISPLAY=":0"
+    fi
+    export DISPLAY
+
+    # Set up DBUS if not already set
+    if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+        export DBUS_SESSION_BUS_ADDRESS
+    fi
+
+    echo "Session info: DISPLAY=$DISPLAY, DBUS=$DBUS_SESSION_BUS_ADDRESS"
+    echo "Desktop: $XDG_CURRENT_DESKTOP, Session: $XDG_SESSION_TYPE"
+}
+
+# Wait for GNOME to be ready with dynamic timeout
+wait_for_gnome() {
+    local max_wait=120
+    local waited=0
+
+    echo "Waiting for GNOME session to be ready..."
+
+    while [ $waited -lt $max_wait ]; do
+        if command -v gsettings >/dev/null 2>&1; then
+            if gsettings list-schemas 2>/dev/null | grep -q "org.gnome.desktop.interface"; then
+                if pgrep -x gnome-shell >/dev/null 2>&1 || pgrep -x gnome-session >/dev/null 2>&1; then
+                    echo "✅ GNOME session ready after ${waited}s"
+                    return 0
+                fi
+            fi
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    echo "⚠️ GNOME session not detected after ${max_wait}s, attempting configuration anyway..."
+    return 1
+}
+
+# Apply only theme settings (non-intrusive, runs every login)
+apply_theme_only() {
+    echo "Applying theme settings only..."
+
+    gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null
+    gsettings set org.gnome.desktop.wm.preferences theme 'Adwaita-dark' 2>/dev/null
+
+    echo "✅ Theme settings refreshed"
+}
+
+# Apply GNOME settings with error handling (ONLY on first run)
+apply_settings() {
+    echo "Applying FULL NOX VFX GNOME settings (first-time configuration)..."
+
+    gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null && \
+        echo "✅ GTK theme set" || echo "⚠️ Failed to set GTK theme"
+
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null && \
+        echo "✅ Color scheme set" || echo "⚠️ Failed to set color scheme"
+
+    gsettings set org.gnome.desktop.interface show-battery-percentage true 2>/dev/null
+    gsettings set org.gnome.desktop.interface clock-show-weekday true 2>/dev/null
+    gsettings set org.gnome.desktop.interface clock-show-seconds false 2>/dev/null
+    gsettings set org.gnome.desktop.interface enable-hot-corners false 2>/dev/null
+    echo "✅ Interface settings applied"
+
+    gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close' 2>/dev/null
+    gsettings set org.gnome.desktop.wm.preferences theme 'Adwaita-dark' 2>/dev/null
+    echo "✅ Window manager settings applied"
+
+    gsettings set org.gtk.settings.file-chooser show-hidden false 2>/dev/null
+    gsettings set org.gtk.settings.file-chooser show-size-column true 2>/dev/null
+    gsettings set org.gtk.settings.file-chooser show-type-column true 2>/dev/null
+    gsettings set org.gtk.settings.file-chooser sort-directories-first true 2>/dev/null
+    echo "✅ File manager settings applied"
+
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null
+    echo "✅ Power settings applied"
+
+    gsettings set org.gnome.shell enabled-extensions "['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']" 2>/dev/null && \
+        echo "✅ Extensions enabled" || echo "⚠️ Failed to enable extensions"
+
+    echo "📌 Configuring Dash to Dock defaults (you can customize these after login)..."
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM' 2>/dev/null
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false 2>/dev/null
+    gsettings set org.gnome.shell.extensions.dash-to-dock autohide true 2>/dev/null
+    gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true 2>/dev/null
+    gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false 2>/dev/null
+    gsettings set org.gnome.shell.extensions.dash-to-dock show-trash true 2>/dev/null
+    gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts true 2>/dev/null
+    echo "✅ Dash to Dock configured with defaults"
+
+    gsettings set org.gnome.nautilus.preferences default-folder-viewer 'list-view' 2>/dev/null
+    gsettings set org.gnome.nautilus.preferences search-filter-time-type 'last_modified' 2>/dev/null
+    gsettings set org.gnome.nautilus.preferences show-create-link true 2>/dev/null
+    gsettings set org.gnome.nautilus.preferences show-delete-permanently true 2>/dev/null
+    echo "✅ Nautilus preferences set"
+
+    profile_id=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
+    if [ -n "$profile_id" ]; then
+        gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ use-theme-colors false 2>/dev/null
+        gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ background-color 'rgb(23,20,33)' 2>/dev/null
+        gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile_id/ foreground-color 'rgb(208,207,204)' 2>/dev/null
+        echo "✅ Terminal theme applied"
+    fi
+
+    mkdir -p "$(dirname "$CONFIG_FLAG")"
+    echo "NOX VFX GNOME Configuration Applied" > "$CONFIG_FLAG"
+    echo "Date: $(date)" >> "$CONFIG_FLAG"
+    echo "User: $(whoami)" >> "$CONFIG_FLAG"
+    echo "Display: $DISPLAY" >> "$CONFIG_FLAG"
+    echo "Session: $XDG_SESSION_TYPE" >> "$CONFIG_FLAG"
+    echo "" >> "$CONFIG_FLAG"
+    echo "This file indicates that NOX GNOME configuration has been applied." >> "$CONFIG_FLAG"
+    echo "To reconfigure, delete this file and restart your session." >> "$CONFIG_FLAG"
+    echo "To force reconfiguration, run: /usr/local/bin/set-nox-gnome-config.sh --force" >> "$CONFIG_FLAG"
+    echo "" >> "$CONFIG_FLAG"
+    echo "Note: Theme settings are refreshed on every login, but Dash-to-Dock" >> "$CONFIG_FLAG"
+    echo "and other user preferences are only set once to preserve your customizations." >> "$CONFIG_FLAG"
+
+    echo "✅ Configuration flag created: $CONFIG_FLAG"
+}
+
+# Main execution
+main() {
+    check_if_configured "$1"
+    detect_session
+    sleep 10
+    wait_for_gnome
+    apply_settings
+
+    if command -v logger >/dev/null 2>&1; then
+        logger "NOX VFX GNOME configuration applied for user $(whoami) on DISPLAY=$DISPLAY"
+    fi
+
+    echo "$(date): NOX GNOME configuration completed successfully"
+    echo "Log saved to: $LOG_FILE"
+    echo ""
+    echo "ℹ️  Your Dash-to-Dock customizations will be preserved on future logins"
+}
+
+main "$@"

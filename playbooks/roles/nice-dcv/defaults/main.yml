@@ -1,0 +1,14 @@
+---
+# Defaults for nice-dcv role
+nice_dcv_packages_dir: /tmp/nice-dcv-packages
+nice_dcv_expected_rpms:
+  - nice-dcv-gl-2024.0.1096-1.el9.x86_64.rpm
+  - nice-dcv-gltest-2024.0.352-1.el9.x86_64.rpm
+  - nice-dcv-server-2024.0.19030-1.el9.x86_64.rpm
+  - nice-dcv-web-viewer-2024.0.19030-1.el9.x86_64.rpm
+  - nice-xdcv-2024.0.654-1.el9.x86_64.rpm
+  - nice-dcv-viewer-el9.x86_64.2024.0.rpm
+
+# RLM license string for DCV server. In production store this in Ansible Vault
+# and override per-environment (example: group_vars/all/vault.yml).
+nice_dcv_rlm_license: "5053@license.ad.noxvfx.com"

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=NOX GNOME Configuration
+Comment=Apply NOX VFX GNOME theme and settings (works with local and DCV sessions)
+Exec=/usr/local/bin/set-nox-gnome-config.sh
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=15
+OnlyShowIn=GNOME;
+Categories=System;Settings;
+StartupNotify=false
+X-GNOME-Autostart-Phase=Applications

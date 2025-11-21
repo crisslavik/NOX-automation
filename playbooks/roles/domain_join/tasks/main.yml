@@ -1,0 +1,20 @@
+---
+# Role: domain_join
+# TODO: migrate tasks from playbooks/domain-join.yml here
+
+- name: Domain join placeholder
+  ansible.builtin.debug:
+    msg: "Domain join role placeholder - migrate from playbooks/domain-join.yml"
+
+- name: Deploy sssd.conf from template
+  ansible.builtin.template:
+    src: sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart sssd
+
+- name: Include full domain join task list
+  include_tasks: full.yml
+

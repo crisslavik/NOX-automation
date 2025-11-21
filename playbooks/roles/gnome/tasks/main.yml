@@ -1,0 +1,85 @@
+---
+# Role: gnome
+# TODO: migrate tasks from playbooks/gnome-config.yml here
+
+  ansible.builtin.debug:
+    msg: "GNOME role placeholder - migrate from playbooks/gnome-config.yml"
+---
+# Migrate of playbooks/gnome-config.yml into role tasks
+
+- name: Display GNOME configuration plan
+  ansible.builtin.debug:
+    msg: |
+      🖥️ NOX VFX GNOME Configuration (role)
+      Target: {{ inventory_hostname }}
+
+- name: Install GNOME extensions and tools
+  ansible.builtin.dnf:
+    name:
+      - gnome-extensions-app
+      - gnome-tweaks
+      - gnome-shell-extension-user-theme
+      - gnome-shell-extension-dash-to-dock
+      - gnome-shell-extension-desktop-icons
+    state: present
+  when: install_extensions | default(true)
+
+- name: Create dconf system database directory
+  ansible.builtin.file:
+    path: /etc/dconf/db/local.d
+    state: directory
+    mode: '0755'
+
+- name: Create dconf user profile
+  ansible.builtin.copy:
+    content: |
+      user-db:user
+      system-db:local
+    dest: /etc/dconf/profile/user
+    mode: '0644'
+
+- name: Deploy system-wide dconf configuration
+  ansible.builtin.copy:
+    src: 01-nox-gnome-config
+    dest: /etc/dconf/db/local.d/01-nox-gnome-config
+    mode: '0644'
+  notify: update dconf
+
+- name: Copy set-nox-gnome-config script
+  ansible.builtin.copy:
+    src: set-nox-gnome-config.sh
+    dest: /usr/local/bin/set-nox-gnome-config.sh
+    mode: '0755'
+
+- name: Copy autostart desktop entry
+  ansible.builtin.copy:
+    src: nox-gnome-config.desktop
+    dest: /etc/xdg/autostart/nox-gnome-config.desktop
+    mode: '0644'
+
+- name: Install system profile snippet
+  ansible.builtin.copy:
+    src: profile_user
+    dest: /etc/profile.d/Z97-nox-gnome-config.sh
+    mode: '0755'
+
+- name: Deploy DCV config if present
+  ansible.builtin.copy:
+    src: dcv-gnome-launch.sh
+    dest: /usr/local/bin/dcv-gnome-launch.sh
+    mode: '0755'
+  when: dcv_installed is defined and dcv_installed.stat.exists
+
+- name: Deploy verify script
+  ansible.builtin.copy:
+    src: verify-nox-gnome.sh
+    dest: /usr/local/bin/verify-nox-gnome.sh
+    mode: '0755'
+
+- name: Apply GNOME configuration to currently logged-in users (immediate)
+  ansible.builtin.shell: |
+    # Use the original inline script from playbook to detect sessions and apply settings
+    {{ lookup('file', 'files/set-nox-gnome-config.sh') }}
+  args:
+    executable: /bin/bash
+  ignore_errors: yes

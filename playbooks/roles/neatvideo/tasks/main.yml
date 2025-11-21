@@ -1,0 +1,169 @@
+---
+# ========================================
+# STEP 1: Copy and Install
+# ========================================
+- name: Check for NeatVideo installer on target
+  ansible.builtin.stat:
+    path: "{{ neatvideo_expected_installer }}"
+  register: neatvideo_installer_stat
+  changed_when: false
+
+- name: NeatVideo installer step removed
+  ansible.builtin.debug:
+    msg: "⚠️ NeatVideo installer copy/install removed. Please install NeatVideo plugin externally. Configuration steps will continue if plugin is present."
+
+- name: Verify OFX plugin installation
+  ansible.builtin.stat:
+    path: "{{ ofx_plugin_path }}"
+  register: ofx_check
+
+- name: Display installation status
+  ansible.builtin.debug:
+    msg: "NeatVideo OFX plugin installation status: {{ ofx_check.stat.exists }}"
+  when: ofx_check is defined
+
+# ========================================
+# STEP 2: Remove Uninstall Desktop Icons
+# ========================================
+- name: Find all uninstall files in AD user desktops
+  find:
+    paths: "{{ ad_home_base }}"
+    patterns: "*ninstall*,*Neat*Video*.txt,*Neat*Video*.desktop"
+    recurse: yes
+    file_type: file
+  register: uninstall_files
+
+- name: Remove found uninstall files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ uninstall_files.files }}"
+  when: "'Desktop' in item.path"
+
+- name: Remove uninstall files from /etc/skel
+  shell: |
+    find {{ skel_path }}/Desktop -type f \( -name "*ninstall*" -o -name "*Neat*" \) -delete 2>/dev/null || true
+  changed_when: false
+
+# ========================================
+# STEP 3: Configure License (System-wide)
+# ========================================
+- name: Configure NeatVideo floating license in /etc/environment
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    regexp: '^NEATVIDEO_LICENSE='
+    line: 'NEATVIDEO_LICENSE={{ license_server }}'
+    create: yes
+    mode: '0644'
+
+- name: Configure NeatVideo license for /etc/profile.d (all users)
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/neatvideo.sh
+    regexp: '^export NEATVIDEO_LICENSE='
+    line: 'export NEATVIDEO_LICENSE={{ license_server }}'
+    create: yes
+    mode: '0644'
+
+# ========================================
+# STEP 4: Configure Plugin Preferences
+# ========================================
+- name: Create NeatVideo config directory in /etc/skel
+  file:
+    path: "{{ skel_path }}/{{ neatvideo_config_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Get list of existing AD users from home directory
+  shell: |
+    if [ -d "{{ ad_home_base }}" ]; then
+      find {{ ad_home_base }} -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | while read user; do
+        userinfo=$(getent passwd "$user" 2>/dev/null)
+        if [ -n "$userinfo" ]; then
+          home=$(echo "$userinfo" | cut -d: -f6)
+          echo "$user:$home"
+        fi
+      done
+    fi
+  register: ad_users
+  changed_when: false
+
+- name: Create NeatVideo config directories for existing AD users
+  file:
+    path: "{{ item.split(':')[1] }}/{{ neatvideo_config_dir }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ item.split(':')[0] }}"
+  loop: "{{ ad_users.stdout_lines }}"
+  when: ad_users.stdout_lines | length > 0
+
+# ========================================
+# STEP 5: Configure Temporary Files
+# ========================================
+- name: Create global NeatVideo temp directory
+  file:
+    path: "{{ neatvideo_temp_base }}"
+    state: directory
+    mode: '1777'
+
+- name: Create NeatVideo preferences file in /etc/skel
+  copy:
+    content: |
+      # NeatVideo Preferences
+      TempFolder={{ neatvideo_temp_base }}/$USER
+    dest: "{{ skel_path }}/{{ neatvideo_config_dir }}/preferences.txt"
+    mode: '0644'
+
+- name: Create user-specific temp directories for existing AD users
+  file:
+    path: "{{ neatvideo_temp_base }}/{{ item.split(':')[0] }}"
+    state: directory
+    mode: '0700'
+    owner: "{{ item.split(':')[0] }}"
+  loop: "{{ ad_users.stdout_lines }}"
+  when: ad_users.stdout_lines | length > 0
+
+- name: Create NeatVideo preferences file for existing AD users
+  copy:
+    content: |
+      # NeatVideo Preferences
+      TempFolder={{ neatvideo_temp_base }}/{{ item.split(':')[0] }}
+    dest: "{{ item.split(':')[1] }}/{{ neatvideo_config_dir }}/preferences.txt"
+    mode: '0644'
+    owner: "{{ item.split(':')[0] }}"
+  loop: "{{ ad_users.stdout_lines }}"
+  when: ad_users.stdout_lines | length > 0
+
+# ========================================
+# STEP 6: Cleanup
+# ========================================
+- name: Clean up installer file (if exists)
+  file:
+    path: "{{ neatvideo_expected_installer }}"
+    state: absent
+  when: neatvideo_installer_stat.stat.exists
+
+# ========================================
+# STEP 7: Verification
+# ========================================
+- name: Display installation summary
+  debug:
+    msg:
+      - "========================================="
+      - "NeatVideo Installation Complete"
+      - "========================================="
+      - "Plugin installed: {{ ofx_plugin_path }}"
+      - "License server: {{ license_server }}"
+      - "Config directory: ~/{{ neatvideo_config_dir }}"
+      - "Temp directory: {{ neatvideo_temp_base }}/$USER"
+      - "========================================="
+      - "Usage in Nuke:"
+      - "  Python: nuke.createNode('Reduce Noise v5')"
+      - "  GUI: Tab menu → Filter → Neat Video → Reduce Noise v5"
+      - "========================================="
+      - "Host applications supported:"
+      - "  - Nuke (commercial versions)"
+      - "  - Fusion Studio"
+      - "  - Flame"
+      - "  - Baselight"
+      - "  - And other OFX hosts"
+      - "========================================="

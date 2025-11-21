@@ -1,0 +1,4 @@
+---
+- name: xstudio-scripts-installed
+  debug:
+    msg: "xStudio helper scripts copied to /usr/local/bin"

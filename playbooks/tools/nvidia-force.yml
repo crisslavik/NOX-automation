@@ -1,7 +1,7 @@
 ---
 # Fix Black Screen - Rebuild NVIDIA Modules
 - name: Fix NVIDIA Black Screen (Rebuild Modules)
-  hosts: nox-cmp-04,nox-cmp-06
+  hosts: all
   become: yes
   gather_facts: yes
   

@@ -1,0 +1,5 @@
+---
+# Defaults for gnome role
+enable_dark_theme: true
+install_extensions: true
+optimize_for_vfx: true

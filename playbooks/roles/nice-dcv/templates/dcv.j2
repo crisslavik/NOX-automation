@@ -1,0 +1,10 @@
+%#%PAM-1.0
+# Default Amazon DCV PAM configuration.
+# This file is auto-generated, user changes will be destroyed at
+# installation/update time.
+# To make changes, create a file named dcv.custom in this
+# directory and set the 'pam-service-name' parameter in the
+# [security] section of dcv.conf to 'dcv.custom'
+
+auth    include password-auth
+account include password-auth

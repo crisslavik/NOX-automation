@@ -1,0 +1,70 @@
+---
+# NOX-automation Global Variables
+# This file contains all shared configuration across your infrastructure
+
+# ============================================================================
+# COMPANY INFORMATION
+# ============================================================================
+company_name: "NOX VFX"
+company_domain: "noxvfx.com"
+
+# ============================================================================
+# ACTIVE DIRECTORY CONFIGURATION
+# ============================================================================
+ad_domain: "ad.noxvfx.com"
+ad_home_base: "/home/{{ ad_domain }}"
+domain_name: "{{ ad_domain }}"
+
+# ============================================================================
+# LICENSE SERVERS (Centralized Configuration)
+# ============================================================================
+# Update these in ONE place when license servers change
+# All software uses the same RLM license server at port 5053
+license_servers:
+  foundry: "5053@license"                    # Nuke (Foundry products)
+  neatvideo: "5053@license"                  # NeatVideo OFX Plugin
+  das_element: "5053@license"                # DasElement
+  nice_dcv: "5053@license.ad.noxvfx.com"     # NICE DCV (full domain)
+  # Add more license servers as needed
+
+# ============================================================================
+# NETWORK SHARES & REPOSITORIES
+# ============================================================================
+nfs_server: "storage.noxvfx.com"
+deadline_repo: "/mnt/Library/_deadlinerepo/repository"
+nuke_path: "/mnt/Library/_nox-nuke13"
+
+# ============================================================================
+# SYSTEM CONFIGURATION
+# ============================================================================
+# Firewall Management
+firewall_enabled: true
+firewall_permanent: true
+
+# SELinux Configuration
+selinux_state: "permissive"  # Options: enforcing, permissive, disabled
+selinux_policy: "targeted"
+
+# ============================================================================
+# SOFTWARE INSTALLATION PATHS
+# ============================================================================
+software_install_base: "/opt"
+local_bin_path: "/usr/local/bin"
+
+# ============================================================================
+# USER ENVIRONMENT
+# ============================================================================
+default_shell: "/bin/bash"
+skel_base: "/etc/skel"
+
+# ============================================================================
+# NICE DCV CONFIGURATION
+# ============================================================================
+dcv_port: 8443
+dcv_enable_quic: true
+
+# ============================================================================
+# DEVELOPMENT & DEBUGGING
+# ============================================================================
+debug_mode: false
+verbose_output: false

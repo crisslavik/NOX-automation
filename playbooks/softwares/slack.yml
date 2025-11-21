@@ -2,32 +2,5 @@
 - name: Install Slack
   hosts: all
   become: yes
-
-  tasks:
-    - name: Install Flatpak
-      ansible.builtin.dnf:
-        name: flatpak
-        state: present
-
-    - name: Add Flathub repository
-      ansible.builtin.flatpak_remote:
-        name: flathub
-        state: present
-        flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
-
-    - name: Install Slack via Flatpak
-      ansible.builtin.flatpak:
-        name: com.slack.Slack
-        state: present
-      register: slack_install
-      ignore_errors: yes
-
-    - name: Verify Slack installation
-      ansible.builtin.command: flatpak list --app
-      register: flatpak_list
-      failed_when: false
-      changed_when: false
-
-    - name: Display Slack installation status
-      ansible.builtin.debug:
-        msg: "{{ '✅ Slack installed (Flatpak)' if 'com.slack.Slack' in flatpak_list.stdout else '❌ Slack installation failed' }}"
+  roles:
+    - role: slack

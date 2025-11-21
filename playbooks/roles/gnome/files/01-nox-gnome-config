@@ -1,0 +1,67 @@
+# NOX VFX GNOME Configuration
+# Compatible with local sessions, X11, Wayland, and Nice DCV
+
+# Dark theme settings
+[org/gnome/desktop/interface]
+gtk-theme='Adwaita-dark'
+color-scheme='prefer-dark'
+show-battery-percentage=true
+clock-show-weekday=true
+clock-show-seconds=false
+enable-hot-corners=false
+
+# Window manager settings
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,maximize,close'
+theme='Adwaita-dark'
+
+# File manager settings for VFX workflow
+[org/gtk/settings/file-chooser]
+show-hidden=false
+show-size-column=true
+show-type-column=true
+sort-directories-first=true
+
+# Power settings for VFX workstations
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='suspend'
+
+# GNOME Shell extensions configuration
+[org/gnome/shell]
+enabled-extensions=['dash-to-dock@micxgx.gmail.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@csoriano']
+
+# Dash to Dock extension settings
+[org/gnome/shell/extensions/dash-to-dock]
+dock-position='BOTTOM'
+dock-fixed=false
+autohide=true
+intellihide=true
+extend-height=false
+show-trash=true
+show-mounts=true
+transparency-mode='FIXED'
+background-opacity=0.8
+
+# Terminal settings (dark theme)
+[org/gnome/terminal/legacy/profiles:]
+default='{{ ansible_hostname }}-profile'
+list=['{{ ansible_hostname }}-profile']
+
+[org/gnome/terminal/legacy/profiles:/:{{ ansible_hostname }}-profile]
+visible-name='NOX VFX Terminal'
+use-theme-colors=false
+background-color='rgb(23,20,33)'
+foreground-color='rgb(208,207,204)'
+use-transparent-background=false
+
+# Nautilus (file manager) optimizations
+[org/gnome/nautilus/preferences]
+default-folder-viewer='list-view'
+search-filter-time-type='last_modified'
+show-create-link=true
+show-delete-permanently=true
+
+# VFX-specific optimizations
+[org/gnome/mutter]
+experimental-features=['scale-monitor-framebuffer']

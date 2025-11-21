@@ -1,0 +1,4 @@
+---
+blender_tarball_dest: "/tmp/blender-latest-linux-x64.tar.xz"
+blender_install_base: "/opt/blender"
+deadline_repo: "/mnt/Library/_deadlinerepo/repository"

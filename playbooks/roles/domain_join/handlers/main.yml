@@ -1,0 +1,8 @@
+---
+# Handlers for domain_join role
+- name: restart sssd
+  ansible.builtin.systemd:
+    name: sssd
+    state: restarted
+    daemon_reload: yes
+  ignore_errors: yes

@@ -1,0 +1,7 @@
+---
+- name: Install small developer utilities
+  dnf:
+    name:
+      - htop
+      - git
+    state: present

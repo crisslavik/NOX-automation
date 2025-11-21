@@ -1,0 +1,167 @@
+---
+# NOX System Management Role
+# Handles firewall, SELinux, and base system configuration
+
+- name: Configure SELinux state
+  ansible.posix.selinux:
+    policy: "{{ selinux_policy }}"
+    state: "{{ selinux_state }}"
+  register: selinux_result
+  tags:
+    - system
+    - selinux
+
+- name: Display SELinux configuration
+  ansible.builtin.debug:
+    msg: "SELinux set to {{ selinux_state }} mode with {{ selinux_policy }} policy"
+  tags:
+    - system
+    - selinux
+
+- name: Ensure firewalld is installed
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+  when: firewall_enabled
+  tags:
+    - system
+    - firewall
+
+- name: Ensure firewalld is enabled and started
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: yes
+    state: started
+  when: firewall_enabled
+  tags:
+    - system
+    - firewall
+
+- name: Configure firewall to persist across reboots
+  ansible.builtin.command: firewall-cmd --runtime-to-permanent
+  when: 
+    - firewall_enabled
+    - firewall_permanent
+  changed_when: false
+  tags:
+    - system
+    - firewall
+
+- name: Disable firewalld auto-reset (prevent SELinux from closing firewall)
+  ansible.builtin.lineinfile:
+    path: /etc/firewalld/firewalld.conf
+    regexp: '^CleanupOnExit='
+    line: 'CleanupOnExit=no'
+    create: no
+  when: firewall_enabled
+  notify: restart firewalld
+  tags:
+    - system
+    - firewall
+
+- name: Set firewalld to not flush rules on reload
+  ansible.builtin.lineinfile:
+    path: /etc/firewalld/firewalld.conf
+    regexp: '^FlushAllOnReload='
+    line: 'FlushAllOnReload=no'
+    create: no
+  when: firewall_enabled
+  notify: restart firewalld
+  tags:
+    - system
+    - firewall
+
+- name: Ensure firewalld service is set to not be masked
+  ansible.builtin.systemd:
+    name: firewalld
+    masked: no
+  when: firewall_enabled
+  tags:
+    - system
+    - firewall
+
+- name: Create systemd override directory for firewalld
+  ansible.builtin.file:
+    path: /etc/systemd/system/firewalld.service.d
+    state: directory
+    mode: '0755'
+  when: firewall_enabled
+  tags:
+    - system
+    - firewall
+
+- name: Add firewalld systemd override to prevent auto-stop
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/firewalld.service.d/override.conf
+    content: |
+      [Unit]
+      # Prevent SELinux or other services from stopping firewalld
+      RefuseManualStop=no
+      
+      [Service]
+      # Restart firewalld if it stops unexpectedly
+      Restart=always
+      RestartSec=5
+      
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+  when: firewall_enabled
+  notify: reload systemd and restart firewalld
+  tags:
+    - system
+    - firewall
+
+- name: Check if SELinux is causing firewall issues
+  ansible.builtin.shell: |
+    ausearch -m avc -ts recent | grep firewalld || echo "No SELinux denials found"
+  register: selinux_firewall_check
+  changed_when: false
+  failed_when: false
+  when: 
+    - firewall_enabled
+    - selinux_state != "disabled"
+  tags:
+    - system
+    - firewall
+    - selinux
+    - debug
+
+- name: Display SELinux firewall audit results
+  ansible.builtin.debug:
+    msg: "{{ selinux_firewall_check.stdout_lines }}"
+  when: 
+    - firewall_enabled
+    - selinux_state != "disabled"
+    - selinux_firewall_check.stdout_lines is defined
+  tags:
+    - system
+    - firewall
+    - selinux
+    - debug
+
+- name: Set SELinux booleans for firewalld (if needed)
+  ansible.posix.seboolean:
+    name: "{{ item }}"
+    state: yes
+    persistent: yes
+  loop:
+    - nis_enabled  # Sometimes needed for network services
+  when: 
+    - firewall_enabled
+    - selinux_state == "enforcing"
+  failed_when: false
+  tags:
+    - system
+    - firewall
+    - selinux
+
+- name: Verify firewalld is running
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+  when: firewall_enabled
+  tags:
+    - system
+    - firewall
+    - verify

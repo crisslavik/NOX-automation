@@ -1,0 +1,38 @@
+---
+# Archived: brave.yml (migrated to role 'brave' but had flatpak fallback logic)
+---
+# Install Brave Browser using system package manager (dnf) or Flatpak fallback
+- name: Install Brave Browser
+  hosts: all
+  become: yes
+  tasks:
+    - name: Try install Brave from dnf (if repository available)
+      ansible.builtin.dnf:
+        name: brave-browser
+        state: present
+      register: brave_dnf
+      failed_when: false
+---
+- import_role:
+    name: brave
+    - name: Install Brave via Flatpak if dnf install not successful
+      ansible.builtin.command:
+        cmd: flatpak install -y flathub com.brave.Browser
+      register: brave_flatpak
+      failed_when: brave_flatpak.rc != 0
+      when: brave_dnf is defined and (brave_dnf is failed or brave_dnf is skipped)
+
+    - name: Verify Brave installation
+      ansible.builtin.command: brave-browser --version
+      register: brave_version
+      changed_when: false
+      failed_when: false
+
+    - name: Display Brave installation result
+      ansible.builtin.debug:
+        msg: |
+          {% if brave_version.stdout %}
+          ✅ Brave Browser installed: {{ brave_version.stdout }}
+          {% else %}
+          ⚠️ Brave installation not verified by binary check. Check manually.
+          {% endif %}

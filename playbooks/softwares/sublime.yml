@@ -3,13 +3,9 @@
 - name: Install Sublime Text
   hosts: all
   become: yes
-    
-  tasks:
-    - name: Add Sublime Text repository
-      ansible.builtin.yum_repository:
-        name: sublime-text
-        description: Sublime Text - x86_64 - Stable
-        baseurl: https://download.sublimetext.com/rpm/stable/x86_64
+    ---
+    - import_role:
+        name: sublime
         gpgcheck: yes
         gpgkey: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
         enabled: yes

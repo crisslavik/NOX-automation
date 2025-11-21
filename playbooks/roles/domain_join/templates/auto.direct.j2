@@ -1,0 +1,5 @@
+# Public mounts (all users) - DIRECT MAP
+# Admin mounts handled via PAM script
+{% for mount in nfs_mounts_public %}
+/mnt/{{ mount.dest }} -fstype=nfs,rw {{ nfs_server }}:{{ mount.src }}
+{% endfor %}

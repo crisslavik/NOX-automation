@@ -1,0 +1,37 @@
+---
+- name: Check for Xstudio build artifacts
+  stat:
+    path: "{{ xstudio_installer }}"
+  register: xstudio_installer_stat
+
+- name: xstudio build missing message
+  debug:
+    msg: "Xstudio build artifacts are not tracked. Place the artifacts in {{ xstudio_installer }} on the target to enable automatic steps."
+
+- name: Ensure /usr/local/bin exists
+  file:
+    path: /usr/local/bin
+    state: directory
+    mode: '0755'
+
+- name: Copy xStudio helper script to target
+  copy:
+    src: Xstudio.sh
+    dest: /usr/local/bin/Xstudio.sh
+    mode: '0755'
+  notify: "xstudio-scripts-installed"
+
+- name: Copy xStudio build-complete helper to target
+  copy:
+    src: xstudio_build_complete.sh
+    dest: /usr/local/bin/xstudio_build_complete.sh
+    mode: '0755'
+  notify: "xstudio-scripts-installed"
+
+- name: Optionally run xStudio build-complete script
+  become: yes
+  command: /usr/local/bin/xstudio_build_complete.sh
+  when: xstudio_run_build | default(false)
+  register: xstudio_build_run
+  ignore_errors: true
+

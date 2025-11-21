@@ -1,0 +1,11 @@
+---
+# Default variables for nox_system role
+# These can be overridden in group_vars/all.yml or host_vars/
+
+# Firewall configuration
+firewall_enabled: true
+firewall_permanent: true
+
+# SELinux configuration
+selinux_state: "permissive"  # Options: enforcing, permissive, disabled
+selinux_policy: "targeted"

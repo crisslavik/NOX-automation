@@ -1,0 +1,112 @@
+---
+- name: Ensure DCV packages directory exists (optional)
+  file:
+    path: "{{ nice_dcv_packages_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Install any NICE DCV RPMs found under {{ nice_dcv_packages_dir }}
+  ansible.builtin.shell: |
+    set -e
+    for rpm in {{ nice_dcv_packages_dir }}/*.rpm; do
+      [ -f "$rpm" ] || continue
+      dnf -y install "$rpm" || yum -y install "$rpm" || true
+    done
+  register: dcv_install_result
+  failed_when: false
+  changed_when: dcv_install_result.rc == 0
+
+- name: Clean up temporary DCV packages directory (if empty)
+  file:
+    path: "{{ nice_dcv_packages_dir }}"
+    state: absent
+  when: dcv_install_result is defined
+
+- name: Replace sssd.conf with repository version if provided
+  copy:
+    src: "../../Authentication_SSSD/sssd.conf"
+    dest: /etc/sssd/sssd.conf
+    mode: '0600'
+  notify: restart sssd
+
+- name: Create systemd override directory for dcvserver
+  file:
+    path: /etc/systemd/system/dcvserver.service.d
+    state: directory
+    mode: '0755'
+
+- name: Set RLM_LICENSE environment variable for DCV server
+  copy:
+    dest: /etc/systemd/system/dcvserver.service.d/license.conf
+    content: |
+      [Service]
+      Environment="RLM_LICENSE={{ nice_dcv_rlm_license }}"
+    mode: '0644'
+  notify: daemon reload
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Ensure DCV services are enabled and started
+  ansible.builtin.systemd:
+    name: dcvserver.service
+    enabled: yes
+    state: started
+
+- name: Ensure unit file contains network-online.target dependency
+  lineinfile:
+    path: /usr/lib/systemd/system/dcvserver.service
+    insertafter: '^\[Unit\]'
+    line: 'After=network-online.target'
+  notify: daemon reload
+
+- name: Ensure /etc/dcv exists
+  file:
+    path: /etc/dcv
+    state: directory
+    mode: '0755'
+
+- name: Deploy DCV configuration file from template
+  template:
+    src: dcv.conf.j2
+    dest: /etc/dcv/dcv.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy DCV default permissions from template
+  template:
+    src: default.perm.j2
+    dest: /etc/dcv/default.perm
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy PAM configuration for DCV (dcv)
+  template:
+    src: dcv.j2
+    dest: /etc/pam.d/dcv
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy PAM custom configuration for DCV (dcv-custom)
+  template:
+    src: dcv-custom.j2
+    dest: /etc/pam.d/dcv-custom
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure firewalld is installed (for DCV)
+  dnf:
+    name: firewalld
+    state: present
+
+- name: Ensure DCV firewall port 8443/tcp is open
+  ansible.builtin.firewalld:
+    port: 8443/tcp
+    permanent: yes
+    immediate: yes
+    state: enabled

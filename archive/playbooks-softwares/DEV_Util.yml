@@ -1,0 +1,5 @@
+---
+- name: Install Development Tools and Utilities (archived)
+  hosts: all
+  become: yes
+  # Archived from playbooks/softwares/DEV_Util.yml during reorganization

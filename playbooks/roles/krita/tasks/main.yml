@@ -1,0 +1,18 @@
+---
+- name: Ensure flatpak is installed
+  dnf:
+    name: flatpak
+    state: present
+
+- name: Ensure flathub remote present
+  command: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+  args:
+    creates: /var/lib/flatpak/repo
+  register: flathub_add
+  failed_when: false
+
+- name: Install Krita from flathub
+  command: flatpak install -y flathub {{ krita_flatpak }}
+  register: krita_install
+  failed_when: false
+  changed_when: krita_install.rc == 0

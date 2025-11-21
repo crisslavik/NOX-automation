@@ -1,0 +1,9 @@
+---
+- name: Check for PureRef installer
+  stat:
+    path: "{{ pureref_installer }}"
+  register: pureref_installer_stat
+
+- name: PureRef installer missing message
+  debug:
+    msg: "PureRef installer is not tracked. Place the installer at {{ pureref_installer }} to enable automatic installation."

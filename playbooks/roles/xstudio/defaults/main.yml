@@ -1,0 +1,6 @@
+---
+xstudio_installer: "/tmp/xstudio_installers"
+
+# whether to run the build script after copying (default: false)
+xstudio_run_build: false
+

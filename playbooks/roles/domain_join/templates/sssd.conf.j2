@@ -1,0 +1,18 @@
+[sssd]
+domains = {{ domain_name | default('ad.noxvfx.com') }}
+config_file_version = 2
+services = nss, pam
+
+[domain/{{ domain_name | default('ad.noxvfx.com') }}]
+default_shell = /bin/bash
+ad_server = {{ domain_controller | default('dc-1.ad.noxvfx.com') }}
+krb5_store_password_if_offline = True
+cache_credentials = True
+krb5_realm = {{ domain_realm | default('AD.NOXVFX.COM') }}
+realmd_tags = manages-system joined-with-adcli
+id_provider = ad
+fallback_homedir = /home/%d/%u
+ad_domain = {{ domain_name | default('ad.noxvfx.com') }}
+use_fully_qualified_names = False
+ldap_id_mapping = True
+access_provider = {{ access_provider | default('permit') }}

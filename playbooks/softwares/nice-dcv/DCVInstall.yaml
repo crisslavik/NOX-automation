@@ -1,16 +1,4 @@
 ---
-- import_playbook: DCVInstallPackages.yaml
-- import_playbook: DCVSettings.yaml
-- import_playbook: DCVServices.yaml
-
-- name: Reboot system and wait for availability
-  hosts: all
-  become: true
-  tasks:
-    - name: Reboot after completion
-      reboot:
-        reboot_timeout: 300
-
-    - name: Wait for workstation to come back online
-      wait_for_connection:
-        timeout: 300
+"""
+ARCHIVED: original file moved to role-based layout. This file will be removed.
+"""

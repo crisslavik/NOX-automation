@@ -1,0 +1,14 @@
+---
+# Defaults for Davinci Resolve role
+davinci_installer: "/tmp/DaVinci_Resolve_Studio.run"
+davinci_version: "20"
+---
+# Defaults for DaVinci Resolve role
+resolve_installer: "/tmp/DaVinci_Resolve_Studio_20.2.1_Linux.run"
+resolve_temp_dir: "/tmp/resolve_install"
+resolve_projects_path: "/mnt/Projects/_resolve/projects"
+db_host: "127.0.0.1"
+db_port: "5432"
+db_name: "resolve_db"
+db_user: "resolve_user"
+db_password: "resolvedb"

@@ -1,0 +1,37 @@
+---
+- name: Add Sublime Text repository
+  ansible.builtin.yum_repository:
+    name: sublime-text
+    description: Sublime Text - x86_64 - Stable
+    baseurl: https://download.sublimetext.com/rpm/stable/x86_64
+    gpgcheck: yes
+    gpgkey: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
+    enabled: yes
+
+- name: Install Sublime Text
+  ansible.builtin.dnf:
+    name: sublime-text
+    state: present
+
+- name: Set Sublime Text as default text editor
+  ansible.builtin.alternatives:
+    name: editor
+    path: /usr/bin/subl
+    link: /usr/bin/editor
+  failed_when: false
+
+- name: Set EDITOR environment variable system-wide
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    line: 'EDITOR=/usr/bin/subl'
+    create: yes
+
+- name: Verify Sublime Text installation
+  ansible.builtin.command:
+    cmd: subl --version
+  register: sublime_version
+  changed_when: false
+
+- name: Display Sublime Text version
+  ansible.builtin.debug:
+    msg: "✅ Sublime Text installed: {{ sublime_version.stdout }}"
