@@ -1,34 +1,6 @@
 ---
-# Install Google Chrome from Flatpak
-- name: Install Google Chrome via Flatpak
+- name: Install Google Chrome
   hosts: all
   become: yes
-    ---
-    - import_role:
-        name: chrome
-    - name: Add Flathub repository
-      ansible.builtin.command:
-        cmd: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-      register: flathub_add
-      changed_when: "'already exists' not in flathub_add.stderr"
-
-    - name: Install Google Chrome from Flatpak
-      ansible.builtin.command:
-        cmd: flatpak install -y flathub com.google.Chrome
-      register: chrome_install
-      changed_when: "'Already installed' not in chrome_install.stdout"
-      failed_when: 
-        - chrome_install.rc != 0
-        - "'Already installed' not in chrome_install.stdout"
-    
-    - name: Verify Chrome installation
-      ansible.builtin.command:
-        cmd: flatpak list --app --columns=application
-      register: chrome_check
-      changed_when: false
-      failed_when: false
-    
-    - name: Display installation result
-      ansible.builtin.debug:
-        msg: "✅ Google Chrome installed via Flatpak"
-      when: "'com.google.Chrome' in chrome_check.stdout"
+  roles:
+    - role: chrome
