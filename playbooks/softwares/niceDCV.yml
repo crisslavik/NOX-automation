@@ -1,0 +1,6 @@
+---
+- name: Install Nice DCV Remote Desktop
+  hosts: all
+  become: yes
+  roles:
+    - role: nice-dcv
