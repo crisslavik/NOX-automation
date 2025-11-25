@@ -138,10 +138,16 @@
       failed_when: false
       changed_when: semanage_result.rc == 0
 
+    - name: Check if AD home directory exists
+      ansible.builtin.stat:
+        path: /home/{{ domain_name }}
+      register: ad_home_dir
+
     - name: Apply SELinux contexts to existing AD home directories
       ansible.builtin.command: restorecon -R -v /home/{{ domain_name }}/
-      when: semanage_result.rc == 0
-      ignore_errors: yes
+      when:
+        - semanage_result.rc == 0
+        - ad_home_dir.stat.exists
 
     - name: Create PAM script directory
       ansible.builtin.file:
