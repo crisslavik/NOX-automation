@@ -19,6 +19,14 @@
     - kernel
     - phase0
 
+- name: "PHASE 0C: NOX Pipeline PATH Configuration"
+  ansible.builtin.import_playbook: nox-pipeline-path.yml
+  tags:
+    - system
+    - environment
+    - pipeline
+    - phase0
+
 # ========================================
 # PHASE 1: NOX Full Workstation Setup
 # ========================================

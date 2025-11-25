@@ -63,6 +63,14 @@
     - kernel
     - phase0
 
+- name: "PHASE 0C: NOX Pipeline PATH Configuration"
+  ansible.builtin.import_playbook: nox-pipeline-path.yml
+  tags:
+    - system
+    - environment
+    - pipeline
+    - phase0
+
 # ========================================
 # PHASE 1: System Updates
 # ========================================
@@ -182,6 +190,7 @@
           Installed Components:
           ✅ SELinux set to permissive mode
           ✅ Kernel limit configured (max 2 kernels)
+          ✅ NOX Pipeline PATH configured
           ✅ System updates
           ✅ Active Directory integration ({{ 'SKIPPED' if skip_domain_join | default(false) else 'COMPLETED' }})
           ✅ GNOME desktop configuration
@@ -218,6 +227,7 @@
           ║  Your workstation is now configured with:                ║
           ║  • SELinux permissive mode                               ║
           ║  • Kernel limit (max 2 kernels)                          ║
+          ║  • NOX Pipeline PATH (/mnt/Library/pipeline/live_linux)  ║
           ║  • Updated system packages                               ║
           ║  • Active Directory integration                          ║
           ║  • GNOME dark theme & VFX optimizations                  ║

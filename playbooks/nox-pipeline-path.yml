@@ -1,0 +1,43 @@
+---
+- name: Configure NOX Pipeline PATH Environment Variable
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Check if pipeline directory exists
+      ansible.builtin.stat:
+        path: "{{ pipeline_path }}"
+      register: pipeline_dir
+      failed_when: false
+
+    - name: Display pipeline path status
+      ansible.builtin.debug:
+        msg: "Pipeline directory {{ pipeline_path }}: {{ 'EXISTS' if pipeline_dir.stat.exists else 'NOT FOUND (will configure anyway)' }}"
+
+    - name: Configure NOX Pipeline PATH in system profile
+      ansible.builtin.copy:
+        content: |
+          # NOX VFX Pipeline PATH Configuration
+          # Adds NOX pipeline tools to system PATH
+          export PATH={{ pipeline_path }}:$PATH
+        dest: /etc/profile.d/nox-pipeline.sh
+        mode: '0755'
+      register: pipeline_config
+
+    - name: Display configuration result
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
+          ✅ NOX Pipeline PATH Configuration Complete!
+
+          Pipeline Path: {{ pipeline_path }}
+          Config File: /etc/profile.d/nox-pipeline.sh
+          Status: {{ 'Directory exists' if pipeline_dir.stat.exists else '⚠️ Directory not found - verify NFS mount' }}
+
+          Changes take effect:
+          • For new login sessions
+          • After running: source /etc/profile.d/nox-pipeline.sh
+
+          To verify: echo $PATH | grep pipeline
