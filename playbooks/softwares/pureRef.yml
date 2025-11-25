@@ -1,15 +1,6 @@
 ---
----
-# PureRef requires manual download; we no longer handle local RPM installs.
-- name: PureRef installation skipped (RPMs removed)
+- name: Install PureRef
   hosts: all
   become: yes
-  tasks:
-    - name: Inform user to download PureRef manually
-      ansible.builtin.debug:
-        msg: |
-          ⚠️  PureRef installation has been disabled in this repository (RPM installs removed).
-          ---
-          - import_role:
-              name: pureref
-          2. Install it manually or add it to a private RPM repo and use dnf.
+  roles:
+    - role: pureref

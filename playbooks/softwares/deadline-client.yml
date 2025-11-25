@@ -1,8 +1,7 @@
 ---
----
----
-- hosts: all
-  become: true
+- name: Install Deadline Client
+  hosts: all
+  become: yes
   roles:
     - role: deadline-client
       tags: always
