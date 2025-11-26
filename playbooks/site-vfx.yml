@@ -1,0 +1,64 @@
+---
+# NOX VFX Applications Playbook
+# Installs core DCC and utility software on NOX workstations.
+# Use: ansible-playbook -i hosts.ini playbooks/site-vfx.yml --limit <host_or_group>
+
+- name: NOX VFX Applications Setup
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Install Blender with Deadline integration
+      ansible.builtin.import_playbook: softwares/blender.yml
+      tags:
+        - vfx
+        - blender
+
+    - name: Install Nuke 16
+      ansible.builtin.import_playbook: softwares/nuke16.yml
+      tags:
+        - vfx
+        - nuke
+        - nuke16
+
+    - name: Install RV (wrapped to avoid env conflicts)
+      ansible.builtin.import_playbook: softwares/rv.yml
+      tags:
+        - vfx
+        - rv
+
+    - name: Install Flameshot screenshot tool
+      ansible.builtin.import_playbook: softwares/flameshot.yml
+      tags:
+        - vfx
+        - flameshot
+
+    - name: Install Das Element Lite
+      ansible.builtin.import_playbook: softwares/das-element-lite.yml
+      tags:
+        - vfx
+        - das-element-lite
+
+    - name: Install Deadline Client
+      ansible.builtin.import_playbook: softwares/deadline-client.yml
+      tags:
+        - vfx
+        - deadline
+
+    - name: Install Neat Video (OFX)
+      ansible.builtin.import_playbook: softwares/neatvideo.yml
+      tags:
+        - vfx
+        - neatvideo
+
+    - name: Install Slack
+      ansible.builtin.import_playbook: softwares/slack.yml
+      tags:
+        - vfx
+        - slack
+
+    - name: Install Sublime Text
+      ansible.builtin.import_playbook: softwares/sublime.yml
+      tags:
+        - vfx
+        - sublime
