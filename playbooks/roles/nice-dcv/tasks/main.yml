@@ -3,7 +3,7 @@
 # Check if RPMs exist in repository Files/nice-dcv directory
 - name: Check for DCV RPM files in repository
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../Files/nice-dcv"
+    paths: "{{ playbook_dir }}/../../Files/nice-dcv"
     patterns: "*.rpm"
   delegate_to: localhost
   register: dcv_repo_rpms
