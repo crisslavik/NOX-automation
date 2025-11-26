@@ -54,23 +54,15 @@
     - deadline_repo_installer_fallback.stat.exists is defined
     - deadline_repo_installer_fallback.stat.exists
 
-# Step 3: Install Deadline Client
-- name: Install Deadline Client in silent mode with daemon and remote control
+# Step 3: Install Deadline Client (basic install, connection configured later)
+- name: Install Deadline Client in silent mode
   ansible.builtin.command:
     cmd: >
       /tmp/{{ deadline_installer_filename }}
       --mode unattended
       --prefix {{ deadline_install_dir }}
-      --connectiontype Remote
-      --proxyrootdir {{ rcs_server }}:{{ rcs_port }}
-      --proxycertificate {{ client_cert_path }}
-      --proxycertificatepassword {{ client_cert_password }}
       --slavestartup false
-      --launcherstartup true
-      --launcherdaemon true
-      --daemonuser {{ render_user }}
-      --blockautoupdateoverride Blocked
-      --remotecontrol NotBlocked
+      --launcherstartup false
       --installer-language en
   args:
     creates: "{{ deadline_install_dir }}/bin/deadlinecommand"
@@ -87,7 +79,18 @@
   ansible.builtin.debug:
     msg: "{{ '✅ Deadline client installed successfully at ' + deadline_install_dir if not deadline_installed.stat.exists else '✅ Deadline client already installed - configuration updated' }}"
 
-# Step 4: Add Deadline to system PATH
+# Step 4: Configure Deadline Repository Connection
+- name: Configure Deadline connection to RCS server
+  ansible.builtin.shell: |
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate {{ client_cert_path }}
+  environment:
+    HOME: /root
+  changed_when: true
+  ignore_errors: yes
+
+# Step 5: Add Deadline to system PATH
 - name: Add Deadline to system PATH
   ansible.builtin.copy:
     dest: /etc/profile.d/deadline.sh
@@ -96,7 +99,7 @@
       export DEADLINE_PATH={{ deadline_install_dir }}
       export PATH=$PATH:{{ deadline_install_dir }}/bin
 
-# Step 5: Configure Desktop Shortcuts (System-wide)
+# Step 6: Configure Desktop Shortcuts (System-wide)
 - name: Copy Deadline desktop files to system applications
   ansible.builtin.copy:
     src: "{{ deadline_install_dir }}/{{ item }}"
@@ -123,7 +126,7 @@
     line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlineslave'
   ignore_errors: yes
 
-# Step 6: Configure for Existing AD Users
+# Step 7: Configure for Existing AD Users
 - name: Find all existing AD user home directories
   ansible.builtin.find:
     paths: "{{ ad_home_base }}"
@@ -167,7 +170,7 @@
   when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
   failed_when: false
 
-# Step 7: Configure for Future AD Users (/etc/skel/)
+# Step 8: Configure for Future AD Users (/etc/skel/)
 - name: Create .deadline directory in /etc/skel
   ansible.builtin.file:
     path: /etc/skel/.deadline
