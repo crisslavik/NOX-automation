@@ -106,8 +106,8 @@
   tags:
     - install
 
-# Step 4: Check for installer on target
-- name: Check if Nuke installer exists on target
+# Step 4: Verify installer was copied successfully
+- name: Verify Nuke installer file is present on target
   ansible.builtin.stat:
     path: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
   register: nuke_installer_stat
@@ -155,6 +155,17 @@
     mode: '0644'
     line: "export foundry_LICENSE={{ foundry_license }}"
     regexp: '^export foundry_LICENSE='
+  tags:
+    - config
+    - environment
+
+- name: Add PATH export for Nuke (CRITICAL - required for Nuke to work)
+  ansible.builtin.lineinfile:
+    path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
+    create: yes
+    mode: '0644'
+    line: "export PATH={{ nuke_install_dir }}/Nuke{{ nuke_version }}:$PATH"
+    regexp: '^export PATH=.*Nuke.*:\$PATH'
   tags:
     - config
     - environment

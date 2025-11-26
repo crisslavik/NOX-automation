@@ -34,6 +34,17 @@ deadline_repo: "/mnt/Library/_deadlinerepo/repository"
 nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
 pipeline_path: "/mnt/Library/pipeline/live_linux"
 
+# Das Element Configuration Paths
+daselement_config_path: "/mnt/Library/_daselement/das-element.conf"
+daselement_resources_path: "/mnt/Library/_daselement/resources"
+
+# Deadline Repository Connection
+deadline_rcs_server: "192.168.11.16"
+deadline_rcs_port: "4433"
+deadline_cert_path: "/mnt/Library/_deadlinerepo/certs/Deadline10RemoteClient.pfx"
+deadline_cert_password: "N0Xdeadline"
+deadline_render_user: "render"
+
 # ============================================================================
 # SYSTEM CONFIGURATION
 # ============================================================================
@@ -42,7 +53,7 @@ firewall_enabled: true
 firewall_permanent: true
 
 # SELinux Configuration
-selinux_state: "permissive"  # Options: enforcing, permissive, disabled
+selinux_state: "disabled"  # Options: enforcing, permissive, disabled
 selinux_policy: "targeted"
 
 # ============================================================================

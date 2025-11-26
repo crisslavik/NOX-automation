@@ -1,18 +1,17 @@
 ---
 # Installation settings
-daselement_package_name: "das-element"
-daselement_version: "latest"
-daselement_lite_version: "latest"
-daselement_install_path: "/opt/{{ daselement_package_name }}-{{ daselement_version }}"
-daselement_expected_rpm: "/tmp/das_element_installer.rpm"
+daselement_lite_version: "2.1.4"
+daselement_package_name: "das-element-lite"
+daselement_rpm_file: "{{ daselement_package_name }}_{{ daselement_lite_version }}_lin.rpm"
+daselement_install_path: "/opt/{{ daselement_package_name }}-{{ daselement_lite_version }}"
 
 # Installer filename (place in Files/das-element/ or Files/)
-daselement_installer_filename: "das-element-lite_2.1.4_lin.rpm"
+daselement_installer_filename: "{{ daselement_rpm_file }}"
 
 # Variant: 'full' or 'lite'
-daselement_variant: "full"
+daselement_variant: "lite"
 
-# Environment variables
+# Environment variables (inherited from group_vars/all.yml)
 daselement_license_server: "{{ das_element_license }}"
-daselement_config_path: "/mnt/Library/_daselement/das-element.conf"
-daselement_resources_path: "/mnt/Library/_daselement/resources"
+# daselement_config_path is defined in group_vars/all.yml
+# daselement_resources_path is defined in group_vars/all.yml

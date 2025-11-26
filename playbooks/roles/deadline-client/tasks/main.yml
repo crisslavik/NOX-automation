@@ -55,11 +55,25 @@
     - deadline_repo_installer_fallback.stat.exists
 
 # Step 3: Install Deadline Client
-- name: Run Deadline Client installer
-  ansible.builtin.command: >
-    /tmp/{{ deadline_installer_filename }}
-    --mode unattended
-    --prefix {{ deadline_install_dir }}
+- name: Install Deadline Client in silent mode with daemon and remote control
+  ansible.builtin.command:
+    cmd: >
+      /tmp/{{ deadline_installer_filename }}
+      --mode unattended
+      --prefix {{ deadline_install_dir }}
+      --connectiontype Remote
+      --proxyrootdir {{ rcs_server }}:{{ rcs_port }}
+      --proxycertificate {{ client_cert_path }}
+      --proxycertificatepassword {{ client_cert_password }}
+      --slavestartup false
+      --launcherstartup true
+      --launcherdaemon true
+      --daemonuser {{ render_user }}
+      --blockautoupdateoverride Blocked
+      --remotecontrol NotBlocked
+      --installer-language en
+  args:
+    creates: "{{ deadline_install_dir }}/bin/deadlinecommand"
   when: not deadline_installed.stat.exists
   register: deadline_install_result
 
@@ -72,3 +86,103 @@
 - name: Display Deadline installation result
   ansible.builtin.debug:
     msg: "{{ '✅ Deadline client installed successfully at ' + deadline_install_dir if not deadline_installed.stat.exists else '✅ Deadline client already installed - configuration updated' }}"
+
+# Step 4: Add Deadline to system PATH
+- name: Add Deadline to system PATH
+  ansible.builtin.copy:
+    dest: /etc/profile.d/deadline.sh
+    mode: '0644'
+    content: |
+      export DEADLINE_PATH={{ deadline_install_dir }}
+      export PATH=$PATH:{{ deadline_install_dir }}/bin
+
+# Step 5: Configure Desktop Shortcuts (System-wide)
+- name: Copy Deadline desktop files to system applications
+  ansible.builtin.copy:
+    src: "{{ deadline_install_dir }}/{{ item }}"
+    dest: /usr/share/applications/{{ item }}
+    mode: '0644'
+    remote_src: yes
+  loop:
+    - deadlinelauncher10.desktop
+    - deadlinemonitor10.desktop
+    - deadlineworker10.desktop
+  ignore_errors: yes
+
+- name: Fix Monitor desktop file to launch directly
+  ansible.builtin.lineinfile:
+    path: /usr/share/applications/deadlinemonitor10.desktop
+    regexp: '^Exec='
+    line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlinemonitor'
+  ignore_errors: yes
+
+- name: Fix Worker desktop file to launch directly
+  ansible.builtin.lineinfile:
+    path: /usr/share/applications/deadlineworker10.desktop
+    regexp: '^Exec='
+    line: 'Exec=/opt/Thinkbox/Deadline10/bin/deadlineslave'
+  ignore_errors: yes
+
+# Step 6: Configure for Existing AD Users
+- name: Find all existing AD user home directories
+  ansible.builtin.find:
+    paths: "{{ ad_home_base }}"
+    file_type: directory
+    recurse: no
+  register: ad_user_homes_raw
+  failed_when: false
+
+- name: Filter only actual user directories (UID > 400000000)
+  ansible.builtin.set_fact:
+    ad_user_homes:
+      files: "{{ ad_user_homes_raw.files | selectattr('uid', 'gt', 400000000) | list }}"
+  when: ad_user_homes_raw.files is defined
+
+- name: Create .deadline directory for existing AD users
+  ansible.builtin.file:
+    path: "{{ item.path }}/.deadline"
+    state: directory
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.gid }}"
+    mode: '0755'
+  loop: "{{ ad_user_homes.files }}"
+  when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+  failed_when: false
+
+- name: Configure deadline.ini for existing AD users
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/.deadline/deadline.ini"
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.gid }}"
+    mode: '0644'
+    content: |
+      [ConnectionType]
+      Type=Remote
+      [Proxy]
+      Root={{ rcs_server }}:{{ rcs_port }}
+      SSLCertificate={{ client_cert_path }}
+      [AutoConfiguration]
+      Enabled=True
+  loop: "{{ ad_user_homes.files }}"
+  when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+  failed_when: false
+
+# Step 7: Configure for Future AD Users (/etc/skel/)
+- name: Create .deadline directory in /etc/skel
+  ansible.builtin.file:
+    path: /etc/skel/.deadline
+    state: directory
+    mode: '0755'
+
+- name: Configure deadline.ini in /etc/skel for future users
+  ansible.builtin.copy:
+    dest: /etc/skel/.deadline/deadline.ini
+    mode: '0644'
+    content: |
+      [ConnectionType]
+      Type=Remote
+      [Proxy]
+      Root={{ rcs_server }}:{{ rcs_port }}
+      SSLCertificate={{ client_cert_path }}
+      [AutoConfiguration]
+      Enabled=True

@@ -1,13 +1,22 @@
 ---
 # Defaults for deadline-client role
-deadline_client_installer: "/tmp/deadline_client_installer"
-deadline_client_version: "latest"
-
-# Path to Deadline client installer on the target
-deadline_installer_path: "/tmp/Thinkbox_Deadline_Client_Installer.run"
+deadline_version: "10.4.2.2"
+deadline_installer: "DeadlineClient-{{ deadline_version }}-linux-x64-installer.run"
 
 # Installer filename (place in Files/deadline/ or Files/)
-deadline_installer_filename: "DeadlineClient-10.4.2.2-linux-x64-installer.run"
+deadline_installer_filename: "{{ deadline_installer }}"
 
 # Installation directory
 deadline_install_dir: "/opt/Thinkbox/Deadline10"
+deadline_install_path: "{{ deadline_install_dir }}"
+
+# Repository connection settings (inherited from group_vars/all.yml)
+rcs_server: "{{ deadline_rcs_server }}"
+rcs_port: "{{ deadline_rcs_port }}"
+client_cert_path: "{{ deadline_cert_path }}"
+client_cert_password: "{{ deadline_cert_password }}"
+
+# Daemon settings (inherited from group_vars/all.yml)
+render_user: "{{ deadline_render_user }}"
+
+# ad_home_base is defined in group_vars/all.yml
