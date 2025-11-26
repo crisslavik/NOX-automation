@@ -12,10 +12,10 @@ nuke_installer_dir: "/tmp"
 
 nuke_install_dir: "{{ software_install_base | default('/opt') }}"
 
-# Paths and other shared defaults (values come from group_vars/all.yml)
-nuke_path: "{{ nuke_path }}"
-ad_home_base: "{{ ad_home_base }}"
-foundry_license: "{{ foundry_license }}"
+# Note: The following variables are inherited from group_vars/all.yml:
+# - nuke_path
+# - ad_home_base
+# - foundry_license
 
 # Version-specific defaults (override in playbook)
 nuke_version: "15.2"

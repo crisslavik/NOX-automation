@@ -37,18 +37,24 @@
   tags:
     - install
 
-- name: Set installer source path
-  ansible.builtin.set_fact:
-    nuke_installer_source: "{{ nuke_repo_installer.stat.path if nuke_repo_installer.stat.exists else (nuke_repo_installer_fallback.stat.path if nuke_repo_installer_fallback.stat.exists | default(false) else '') }}"
+- name: Copy Nuke installer from repository to target (from Files/nuke/)
+  ansible.builtin.copy:
+    src: "{{ nuke_installer_repo_dir }}/{{ nuke_installer }}"
+    dest: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
+    mode: '0755'
+  when: nuke_repo_installer.stat.exists
   tags:
     - install
 
-- name: Copy Nuke installer from repository to target
+- name: Copy Nuke installer from repository to target (from Files/ fallback)
   ansible.builtin.copy:
-    src: "{{ nuke_installer_source }}"
+    src: "{{ nuke_installer_repo_dir_fallback }}/{{ nuke_installer }}"
     dest: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
     mode: '0755'
-  when: nuke_installer_source != ''
+  when:
+    - not nuke_repo_installer.stat.exists
+    - nuke_repo_installer_fallback.stat.exists is defined
+    - nuke_repo_installer_fallback.stat.exists
   tags:
     - install
 
