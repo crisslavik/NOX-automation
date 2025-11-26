@@ -6,7 +6,7 @@
     # --- Installation Path Variables ---
     rv_final_path: "/opt/Autodesk/RV-2025.0.0"
     rv_extract_parent_path: "/opt/Autodesk"
-    rv_source_zip: "../../files/RV-Linux-Rocky9-Release-2025.0.0.zip"
+    rv_source_zip: "../../Files/RV-Linux-Rocky9-Release-2025.0.0.zip"
   
   tasks:
     - name: 1. Install critical dependencies for RV on AlmaLinux 9
