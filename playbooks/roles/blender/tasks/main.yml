@@ -52,10 +52,16 @@
   changed_when: false
   when: blender_installed.stat.exists
 
+- name: Get actual Blender installation path from symlink
+  stat:
+    path: /usr/local/bin/blender
+  register: blender_symlink
+  when: blender_installed.stat.exists
+
 - name: Set Blender version variable (from existing installation)
   set_fact:
     blender_version: "{{ existing_version.stdout }}"
-    blender_install_path: "{{ blender_install_base }}/{{ existing_version.stdout }}"
+    blender_install_path: "{{ blender_symlink.stat.lnk_source | dirname }}"
     blender_config_path: ".config/blender/{{ existing_version.stdout }}"
   when: blender_installed.stat.exists
 
@@ -221,6 +227,9 @@
   file:
     path: "{{ blender_install_path }}/blender"
     mode: '0755'
+  when:
+    - not blender_installed.stat.exists
+  failed_when: false
 
 - name: Remove Blender tarball
   file:
