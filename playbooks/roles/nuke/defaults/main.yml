@@ -3,7 +3,9 @@
 nuke_installer: "Nuke{{ nuke_version }}v{{ nuke_patch }}-linux-x86_64.run"
 
 # Where the installer lives in the repo (on the Ansible controller)
-nuke_installer_repo_dir: "{{ playbook_dir }}/../Files/"
+# Checks Files/nuke/ first, then falls back to Files/
+nuke_installer_repo_dir: "{{ playbook_dir }}/../Files/nuke"
+nuke_installer_repo_dir_fallback: "{{ playbook_dir }}/../Files"
 
 # Where the installer will be copied on the target before execution
 nuke_installer_dir: "/tmp"
@@ -13,6 +15,7 @@ nuke_install_dir: "{{ software_install_base | default('/opt') }}"
 # Paths and other shared defaults (values come from group_vars/all.yml)
 nuke_path: "{{ nuke_path }}"
 ad_home_base: "{{ ad_home_base }}"
+foundry_license: "{{ foundry_license }}"
 
 # Version-specific defaults (override in playbook)
 nuke_version: "15.2"
