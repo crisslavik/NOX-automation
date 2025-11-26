@@ -1,12 +1,72 @@
 ---
-- name: Check for Deadline client installer
+# Step 1: Check if already installed
+- name: Check if Deadline client is already installed
   ansible.builtin.stat:
-    path: "{{ deadline_installer_path }}"
-  register: deadline_installer
+    path: "{{ deadline_install_dir }}/bin/deadlinecommand"
+  register: deadline_installed
 
-- name: Deadline client missing message
+- name: Display Deadline installation status
   ansible.builtin.debug:
-    msg: "Deadline client installer not found. Place the installer at {{ deadline_installer_path }} on the target host or set the variable accordingly."
-  when: not deadline_installer.stat.exists
+    msg: "{{ '✅ Deadline client already installed - skipping installation' if deadline_installed.stat.exists else '⚙️ Deadline client not found - proceeding with installation' }}"
 
-# TODO: add installation tasks using copy/dnf/command once installer path and method are finalized
+# Step 2: Copy installer from Files/ directory
+- name: Check for Deadline installer in repository Files/deadline/
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../Files/deadline/{{ deadline_installer_filename }}"
+  register: deadline_repo_installer
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+  when: not deadline_installed.stat.exists
+
+- name: Check for Deadline installer in repository Files/ (fallback)
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../Files/{{ deadline_installer_filename }}"
+  register: deadline_repo_installer_fallback
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+  when:
+    - not deadline_installed.stat.exists
+    - not deadline_repo_installer.stat.exists
+
+- name: Copy Deadline installer from repository to target (from Files/deadline/)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../Files/deadline/{{ deadline_installer_filename }}"
+    dest: "/tmp/{{ deadline_installer_filename }}"
+    mode: '0755'
+  when:
+    - not deadline_installed.stat.exists
+    - deadline_repo_installer.stat.exists
+
+- name: Copy Deadline installer from repository to target (from Files/ fallback)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../Files/{{ deadline_installer_filename }}"
+    dest: "/tmp/{{ deadline_installer_filename }}"
+    mode: '0755'
+  when:
+    - not deadline_installed.stat.exists
+    - not deadline_repo_installer.stat.exists
+    - deadline_repo_installer_fallback.stat.exists is defined
+    - deadline_repo_installer_fallback.stat.exists
+
+# Step 3: Install Deadline Client
+- name: Run Deadline Client installer
+  ansible.builtin.command: >
+    /tmp/{{ deadline_installer_filename }}
+    --mode unattended
+    --prefix {{ deadline_install_dir }}
+  when: not deadline_installed.stat.exists
+  register: deadline_install_result
+
+- name: Remove Deadline installer after installation
+  ansible.builtin.file:
+    path: "/tmp/{{ deadline_installer_filename }}"
+    state: absent
+  when: not deadline_installed.stat.exists
+
+- name: Display Deadline installation result
+  ansible.builtin.debug:
+    msg: "{{ '✅ Deadline client installed successfully at ' + deadline_install_dir if not deadline_installed.stat.exists else '✅ Deadline client already installed - configuration updated' }}"

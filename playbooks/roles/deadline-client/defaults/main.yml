@@ -5,3 +5,9 @@ deadline_client_version: "latest"
 
 # Path to Deadline client installer on the target
 deadline_installer_path: "/tmp/Thinkbox_Deadline_Client_Installer.run"
+
+# Installer filename (place in Files/deadline/ or Files/)
+deadline_installer_filename: "DeadlineClient-10.3-linux-x64-installer.run"
+
+# Installation directory
+deadline_install_dir: "/opt/Thinkbox/Deadline10"

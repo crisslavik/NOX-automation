@@ -6,6 +6,9 @@ daselement_lite_version: "latest"
 daselement_install_path: "/opt/{{ daselement_package_name }}-{{ daselement_version }}"
 daselement_expected_rpm: "/tmp/das_element_installer.rpm"
 
+# Installer filename (place in Files/das-element/ or Files/)
+daselement_installer_filename: "das-element-lite.rpm"
+
 # Variant: 'full' or 'lite'
 daselement_variant: "full"
 

@@ -1,21 +1,79 @@
 ---
+# Step 1: Check if already installed
+- name: Check if Das Element is already installed
+  ansible.builtin.command: rpm -q das-element-lite
+  register: daselement_installed_check
+  failed_when: false
+  changed_when: false
+
+- name: Display Das Element installation status
+  ansible.builtin.debug:
+    msg: "{{ '✅ Das Element already installed - skipping installation' if daselement_installed_check.rc == 0 else '⚙️ Das Element not found - proceeding with installation' }}"
+
+# Step 2: Install dependencies
 - name: Install libXScrnSaver dependency
   ansible.builtin.yum:
     name: libXScrnSaver
     state: present
+  when: daselement_installed_check.rc != 0
 
-- name: Check for DasElement RPM on target
+# Step 3: Copy installer from Files/ directory
+- name: Check for DasElement installer in repository Files/das-element/
   ansible.builtin.stat:
-    path: "{{ daselement_expected_rpm }}"
-  register: daselement_rpm_stat
+    path: "{{ playbook_dir }}/../../Files/das-element/{{ daselement_installer_filename }}"
+  register: daselement_repo_installer
+  delegate_to: localhost
+  become: false
+  run_once: true
   changed_when: false
+  when: daselement_installed_check.rc != 0
 
-- name: DasElement RPM installation note
-  ansible.builtin.debug:
-    msg: |
-      ⚠️ DasElement RPM install step has been disabled in repo.
-      If you want automatic installation, place the RPM at {{ daselement_expected_rpm }} on the target host.
-  when: not daselement_rpm_stat.stat.exists
+- name: Check for DasElement installer in repository Files/ (fallback)
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../Files/{{ daselement_installer_filename }}"
+  register: daselement_repo_installer_fallback
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+  when:
+    - daselement_installed_check.rc != 0
+    - not daselement_repo_installer.stat.exists
+
+- name: Copy DasElement installer from repository to target (from Files/das-element/)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../Files/das-element/{{ daselement_installer_filename }}"
+    dest: "/tmp/{{ daselement_installer_filename }}"
+    mode: '0644'
+  when:
+    - daselement_installed_check.rc != 0
+    - daselement_repo_installer.stat.exists
+
+- name: Copy DasElement installer from repository to target (from Files/ fallback)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../Files/{{ daselement_installer_filename }}"
+    dest: "/tmp/{{ daselement_installer_filename }}"
+    mode: '0644'
+  when:
+    - daselement_installed_check.rc != 0
+    - not daselement_repo_installer.stat.exists
+    - daselement_repo_installer_fallback.stat.exists is defined
+    - daselement_repo_installer_fallback.stat.exists
+
+# Step 4: Install from RPM
+- name: Install DasElement from RPM
+  ansible.builtin.dnf:
+    name: "/tmp/{{ daselement_installer_filename }}"
+    state: present
+    disable_gpg_check: yes
+  when: daselement_installed_check.rc != 0
+  register: daselement_install_result
+
+- name: Remove DasElement installer after installation
+  ansible.builtin.file:
+    path: "/tmp/{{ daselement_installer_filename }}"
+    state: absent
+  when: daselement_installed_check.rc != 0
 
 # ========================================
 # Lite Version: System-wide Environment
