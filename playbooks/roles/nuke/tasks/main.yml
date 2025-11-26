@@ -15,7 +15,7 @@
 # Step 1: Check if already installed (do this FIRST to avoid unnecessary copying)
 - name: Check if Nuke is already installed
   ansible.builtin.stat:
-    path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }}"
+    path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }}"
   register: nuke_installed
   tags:
     - install
@@ -164,7 +164,7 @@
     path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
     create: yes
     mode: '0644'
-    line: "export PATH={{ nuke_install_dir }}/Nuke{{ nuke_version }}:$PATH"
+    line: "export PATH={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}:$PATH"
     regexp: '^export PATH=.*Nuke.*:\$PATH'
   tags:
     - config
@@ -200,8 +200,8 @@
       Type=Application
       Name=Nuke {{ nuke_version }}
       Comment=Foundry Nuke Compositor
-      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} %f
-      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}/plugins/icons/NukeApp256.png
+      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} %f
+      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
       Terminal=false
       Categories=Graphics;2DGraphics;VFX;
       MimeType=application/x-nuke;
@@ -218,8 +218,8 @@
       Type=Application
       Name=NukeX {{ nuke_version }}
       Comment=Foundry NukeX Compositor
-      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} --nukex %f
-      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}/plugins/icons/NukeApp256.png
+      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} --nukex %f
+      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
       Terminal=false
       Categories=Graphics;2DGraphics;VFX;
       MimeType=application/x-nuke;
@@ -236,8 +236,8 @@
       Type=Application
       Name=Nuke Studio {{ nuke_version }}
       Comment=Foundry Nuke Studio
-      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }} --studio %f
-      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}/plugins/icons/NukeApp256.png
+      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} --studio %f
+      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
       Terminal=false
       Categories=Graphics;2DGraphics;VFX;
       MimeType=application/x-nuke;
