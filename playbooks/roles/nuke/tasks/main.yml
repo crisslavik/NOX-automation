@@ -1,4 +1,17 @@
 ---
+# Debug: Show variable values
+- name: Debug - Show Nuke installer paths and variables
+  ansible.builtin.debug:
+    msg: |
+      Nuke installer: {{ nuke_installer }}
+      Repo dir (nuke): {{ nuke_installer_repo_dir }}
+      Repo dir (fallback): {{ nuke_installer_repo_dir_fallback }}
+      Foundry license: {{ foundry_license | default('UNDEFINED') }}
+      Nuke path: {{ nuke_path | default('UNDEFINED') }}
+  tags:
+    - install
+    - debug
+
 # Step 1: Install Dependencies
 - name: Install required dependencies
   ansible.builtin.dnf:
@@ -36,6 +49,19 @@
   when: not nuke_repo_installer.stat.exists
   tags:
     - install
+
+- name: Debug - Show installer search results
+  ansible.builtin.debug:
+    msg: |
+      Files/nuke/ check:
+        Path: {{ nuke_installer_repo_dir }}/{{ nuke_installer }}
+        Exists: {{ nuke_repo_installer.stat.exists }}
+      Files/ fallback check:
+        Path: {{ nuke_installer_repo_dir_fallback }}/{{ nuke_installer }}
+        Exists: {{ nuke_repo_installer_fallback.stat.exists | default('SKIPPED') }}
+  tags:
+    - install
+    - debug
 
 - name: Copy Nuke installer from repository to target (from Files/nuke/)
   ansible.builtin.copy:
