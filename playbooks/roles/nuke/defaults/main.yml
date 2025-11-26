@@ -3,7 +3,7 @@
 nuke_installer: "Nuke{{ nuke_version }}v{{ nuke_patch }}-linux-x86_64.run"
 
 # Where the installer lives in the repo (on the Ansible controller)
-nuke_installer_repo_dir: "{{ playbook_dir }}/../Files"
+nuke_installer_repo_dir: "{{ playbook_dir }}/../Files/"
 
 # Where the installer will be copied on the target before execution
 nuke_installer_dir: "/tmp"
