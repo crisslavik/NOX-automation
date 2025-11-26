@@ -369,21 +369,28 @@
         path: /usr/bin/dcv
       register: dcv_installed
 
+    - name: Create DCV configuration directory
+      ansible.builtin.file:
+        path: /etc/dcv/dcv.conf.d
+        state: directory
+        mode: '0755'
+      when: dcv_installed.stat.exists
+
     - name: Create DCV session configuration for GNOME optimization
       ansible.builtin.copy:
         content: |
           [display/linux]
           # GNOME-specific optimizations for DCV
           use-hardware-acceleration = true
-          
+
           [session-management/automatic-console-session]
           # Ensure GNOME session settings are preserved
           owner = ""
-          
+
           [connectivity]
           # Optimize for VFX workflows
           enable-quic-frontend = true
-          
+
           [clipboard]
           # Enable clipboard for better workflow
           primary-selection-paste = true
