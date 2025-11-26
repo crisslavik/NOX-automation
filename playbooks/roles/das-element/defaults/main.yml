@@ -10,6 +10,6 @@ daselement_expected_rpm: "/tmp/das_element_installer.rpm"
 daselement_variant: "full"
 
 # Environment variables
-daselement_license_server: "5053@license"
+daselement_license_server: "{{ das_element_license }}"
 daselement_config_path: "/mnt/Library/_daselement/das-element.conf"
 daselement_resources_path: "/mnt/Library/_daselement/resources"

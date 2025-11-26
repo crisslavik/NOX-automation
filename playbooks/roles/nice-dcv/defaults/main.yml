@@ -11,4 +11,4 @@ nice_dcv_expected_rpms:
 
 # RLM license string for DCV server. In production store this in Ansible Vault
 # and override per-environment (example: group_vars/all/vault.yml).
-nice_dcv_rlm_license: "5053@license.ad.noxvfx.com"
+nice_dcv_rlm_license: "{{ nice_dcv_license }}"

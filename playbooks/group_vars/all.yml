@@ -20,12 +20,11 @@ domain_name: "{{ ad_domain }}"
 # ============================================================================
 # Update these in ONE place when license servers change
 # All software uses the same RLM license server at port 5053
-license_servers:
-  foundry: "5053@license"                    # Nuke (Foundry products)
-  neatvideo: "5053@license"                  # NeatVideo OFX Plugin
-  das_element: "5053@license"                # DasElement
-  nice_dcv: "5053@license.ad.noxvfx.com"     # NICE DCV (full domain)
-  # Add more license servers as needed
+# Central scalar vars used by roles
+foundry_license: "5053@license"              # Nuke (Foundry products)
+neatvideo_license: "5053@license"            # NeatVideo OFX Plugin
+das_element_license: "5053@license"          # DasElement
+nice_dcv_license: "5053@license.ad.noxvfx.com" # NICE DCV (full domain)
 
 # ============================================================================
 # NETWORK SHARES & REPOSITORIES

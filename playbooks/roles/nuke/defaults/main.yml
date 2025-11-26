@@ -10,8 +10,7 @@ nuke_installer_dir: "/tmp"
 
 nuke_install_dir: "{{ software_install_base | default('/opt') }}"
 
-# License server - uses centralized config from group_vars/all.yml
-foundry_license: "{{ license_servers.foundry }}"
+# Paths and other shared defaults (values come from group_vars/all.yml)
 nuke_path: "{{ nuke_path }}"
 ad_home_base: "{{ ad_home_base }}"
 

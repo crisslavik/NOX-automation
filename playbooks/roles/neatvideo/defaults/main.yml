@@ -10,7 +10,7 @@ ad_home_base: "/home/{{ ad_domain }}"
 skel_path: "/etc/skel"
 
 # License settings
-license_server: "5053@license"
+license_server: "{{ neatvideo_license }}"
 
 # Plugin configuration paths
 neatvideo_config_dir: ".neatvideo"
