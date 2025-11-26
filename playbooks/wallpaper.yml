@@ -3,8 +3,8 @@
   hosts: all
   become: yes
   vars:
-    wallpaper_source: "{{ playbook_dir }}/../files/NOX_Wallpaper.jpg"
-    logo_source: "{{ playbook_dir }}/../files/NOX_Logo.png"
+    wallpaper_source: "{{ playbook_dir }}/../Files/NOX_Wallpaper.jpg"
+    logo_source: "{{ playbook_dir }}/../Files/NOX_Logo.png"
     wallpaper_path: "/usr/share/backgrounds/nox-wallpaper.jpg"
     logo_path: "/usr/share/pixmaps/nox-logo.png"
 

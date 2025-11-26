@@ -3,21 +3,49 @@
   ansible.builtin.dnf:
     name: flatpak
     state: present
+  register: flatpak_install
+
+- name: Display Flatpak installation status
+  ansible.builtin.debug:
+    msg: "Flatpak installation: {{ 'already present' if not flatpak_install.changed else 'newly installed' }}"
 
 - name: Add Flathub repository
   ansible.builtin.command:
     cmd: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
   register: flathub_add
   changed_when: "'already exists' not in flathub_add.stderr"
+  failed_when: false
+
+- name: Display Flathub repository status
+  ansible.builtin.debug:
+    msg: |
+      Flathub repository: {{ 'already configured' if 'already exists' in flathub_add.stderr else 'newly added' }}
+      {% if flathub_add.rc != 0 and 'already exists' not in flathub_add.stderr %}
+      ⚠️  Warning: Flathub add returned error code {{ flathub_add.rc }}
+      Error: {{ flathub_add.stderr }}
+      {% endif %}
 
 - name: Install Google Chrome from Flatpak
   ansible.builtin.command:
     cmd: flatpak install -y flathub com.google.Chrome
   register: chrome_install
   changed_when: "'Already installed' not in chrome_install.stdout"
-  failed_when: 
-    - chrome_install.rc != 0
-    - "'Already installed' not in chrome_install.stdout"
+  failed_when: false
+  environment:
+    FLATPAK_USER_DIR: /var/lib/flatpak
+
+- name: Display Chrome installation output
+  ansible.builtin.debug:
+    msg: |
+      Chrome installation status:
+      Return code: {{ chrome_install.rc }}
+      {% if chrome_install.rc == 0 %}
+      ✅ Installation successful
+      {% else %}
+      ❌ Installation failed
+      Error: {{ chrome_install.stderr | default('No error message') }}
+      Output: {{ chrome_install.stdout | default('No output') }}
+      {% endif %}
 
 - name: Verify Chrome installation
   ansible.builtin.command:
@@ -26,7 +54,6 @@
   changed_when: false
   failed_when: false
 
-- name: Display installation result
+- name: Display final installation status
   ansible.builtin.debug:
-    msg: "✅ Google Chrome installed via Flatpak"
-  when: "'com.google.Chrome' in chrome_check.stdout"
+    msg: "{{ '✅ Google Chrome is installed via Flatpak' if 'com.google.Chrome' in chrome_check.stdout else '❌ Google Chrome is NOT installed - check errors above' }}"

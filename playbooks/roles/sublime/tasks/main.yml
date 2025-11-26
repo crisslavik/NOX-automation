@@ -7,11 +7,21 @@
     gpgcheck: yes
     gpgkey: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
     enabled: yes
+  register: sublime_repo
+
+- name: Display repository configuration status
+  ansible.builtin.debug:
+    msg: "Sublime Text repository: {{ 'configured' if sublime_repo is succeeded else 'failed to configure' }}"
 
 - name: Install Sublime Text
   ansible.builtin.dnf:
     name: sublime-text
     state: present
+  register: sublime_install
+
+- name: Display Sublime Text installation status
+  ansible.builtin.debug:
+    msg: "Sublime Text installation: {{ 'already present' if not sublime_install.changed else 'newly installed' }}"
 
 - name: Set Sublime Text as default text editor
   ansible.builtin.alternatives:
