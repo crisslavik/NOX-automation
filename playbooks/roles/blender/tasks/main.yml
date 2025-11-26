@@ -118,6 +118,12 @@
   changed_when: false
   when: not blender_installed.stat.exists
 
+- name: Remove old Blender desktop entries
+  ansible.builtin.shell: |
+    find /usr/share/applications -name 'blender-*.desktop' -type f -delete
+  ignore_errors: yes
+  changed_when: false
+
 - name: Create Blender desktop entry
   copy:
     dest: "/usr/share/applications/blender-{{ blender_version }}.desktop"

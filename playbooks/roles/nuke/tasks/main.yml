@@ -140,6 +140,14 @@
     - install
 
 # Step 4: Configure Environment Variables (IDEMPOTENT - version-specific file)
+- name: Remove old generic Nuke environment file (prevent duplicates)
+  ansible.builtin.file:
+    path: /etc/profile.d/nuke.sh
+    state: absent
+  tags:
+    - config
+    - environment
+
 - name: Add foundry_LICENSE environment variable (idempotent)
   ansible.builtin.lineinfile:
     path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
