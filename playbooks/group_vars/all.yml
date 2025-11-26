@@ -32,7 +32,7 @@ license_servers:
 # ============================================================================
 nfs_server: "storage.noxvfx.com"
 deadline_repo: "/mnt/Library/_deadlinerepo/repository"
-nuke_path: "/mnt/Library/_nox-nuke13"
+nuke_path: "/mnt/Library/pipeline/live_linux/nuke_menu_nox"
 pipeline_path: "/mnt/Library/pipeline/live_linux"
 
 # ============================================================================

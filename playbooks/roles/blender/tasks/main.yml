@@ -104,7 +104,8 @@
   changed_when: false
 
 - name: Find all existing AD users (UID > 400000000)
-  shell: "getent passwd | awk -F: '$3 > 400000000 {print $1":"$6}'"
+  shell: |
+    getent passwd | awk -F: '$3 > 400000000 {print $1":"$6}'
   register: ad_users
   changed_when: false
 
