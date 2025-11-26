@@ -1,17 +1,29 @@
 ---
+- name: Check if Blender is already installed
+  stat:
+    path: "/usr/local/bin/blender"
+  register: blender_installed
+
+- name: Display Blender installation status
+  debug:
+    msg: "{{ '✅ Blender already installed - skipping download and installation' if blender_installed.stat.exists else '⚙️ Blender not found - proceeding with installation' }}"
+
 - name: Get Blender download page content
   uri:
     url: "https://www.blender.org/download/"
     return_content: yes
   register: blender_page
+  when: not blender_installed.stat.exists
 
 - name: Extract latest Blender version number
   set_fact:
     blender_latest_version: "{{ blender_page.content | regex_search('blender-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64\\.tar\\.xz', '\\1') | first }}"
+  when: not blender_installed.stat.exists
 
 - name: Construct download URL
   set_fact:
     blender_download_url: "https://download.blender.org/release/Blender{{ blender_latest_version.split('.')[0] }}.{{ blender_latest_version.split('.')[1] }}/blender-{{ blender_latest_version }}-linux-x64.tar.xz"
+  when: not blender_installed.stat.exists
 
 - name: Download Blender tarball
   get_url:
@@ -19,17 +31,33 @@
     dest: "{{ blender_tarball_dest }}"
     mode: '0644'
     timeout: 300
+  when: not blender_installed.stat.exists
 
 - name: Extract version from tarball filename
   shell: "tar -tzf {{ blender_tarball_dest }} | head -1 | cut -d'/' -f1 | sed 's/blender-//; s/-linux-x64//'"
   register: detected_version
   changed_when: false
+  when: not blender_installed.stat.exists
 
-- name: Set Blender version variable
+- name: Set Blender version variable (from installation)
   set_fact:
     blender_version: "{{ detected_version.stdout }}"
     blender_install_path: "{{ blender_install_base }}/{{ detected_version.stdout }}"
     blender_config_path: ".config/blender/{{ detected_version.stdout }}"
+  when: not blender_installed.stat.exists
+
+- name: Detect existing Blender version (if already installed)
+  shell: "/usr/local/bin/blender --version | head -1 | grep -oP 'Blender \\K[0-9]+\\.[0-9]+\\.[0-9]+'"
+  register: existing_version
+  changed_when: false
+  when: blender_installed.stat.exists
+
+- name: Set Blender version variable (from existing installation)
+  set_fact:
+    blender_version: "{{ existing_version.stdout }}"
+    blender_install_path: "{{ blender_install_base }}/{{ existing_version.stdout }}"
+    blender_config_path: ".config/blender/{{ existing_version.stdout }}"
+  when: blender_installed.stat.exists
 
 - name: Create Blender installation directory
   file:
@@ -38,6 +66,7 @@
     mode: '0755'
     owner: root
     group: root
+  when: not blender_installed.stat.exists
 
 - name: Install Blender dependencies
   dnf:
@@ -57,6 +86,7 @@
       - alsa-lib
       - pulseaudio-libs
     state: present
+  when: not blender_installed.stat.exists
 
 - name: Extract Blender tarball
   unarchive:
@@ -66,6 +96,7 @@
     extra_opts: [--strip-components=1]
     owner: root
     group: root
+  when: not blender_installed.stat.exists
 
 - name: Create Blender symlink
   file:
@@ -73,11 +104,13 @@
     dest: "/usr/local/bin/blender"
     state: link
     force: yes
+  when: not blender_installed.stat.exists
 
 - name: Verify Blender installation
   command: "{{ blender_install_path }}/blender --version"
   register: blender_version_check
   changed_when: false
+  when: not blender_installed.stat.exists
 
 - name: Create Blender desktop entry
   copy:
@@ -193,6 +226,7 @@
   file:
     path: "{{ blender_tarball_dest }}"
     state: absent
+  when: not blender_installed.stat.exists
 
 - name: Final verification message
   debug:

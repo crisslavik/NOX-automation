@@ -9,6 +9,15 @@
     rv_source_zip: "../../Files/RV-Linux-Rocky9-Release-2025.0.0.zip"
   
   tasks:
+    - name: Check if RV is already installed
+      stat:
+        path: "{{ rv_final_path }}/bin/rv"
+      register: rv_installed
+
+    - name: Display RV installation status
+      debug:
+        msg: "{{ '✅ RV already installed at ' + rv_final_path + ' - skipping installation' if rv_installed.stat.exists else '⚙️ RV not found - proceeding with installation' }}"
+
     - name: 1. Install critical dependencies for RV on AlmaLinux 9
       dnf:
         name:
@@ -17,7 +26,7 @@
           - libglvnd-devel
           - mesa-libGLU
           - ncurses-compat-libs
-          - libXcursor 
+          - libXcursor
           - xcb-util-cursor
           - qt6-qtbase-gui
           - compat-openssl11
@@ -25,6 +34,7 @@
           - libjpeg-turbo-devel
           - libtiff-devel
         state: present
+      when: not rv_installed.stat.exists
 
     - name: 2. Create Autodesk parent directory
       file:
@@ -33,24 +43,28 @@
         mode: '0755'
         owner: root
         group: root
+      when: not rv_installed.stat.exists
 
     - name: 3. Copy RV zip file to target machine
       copy:
         src: "{{ rv_source_zip }}"
         dest: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         mode: '0644'
+      when: not rv_installed.stat.exists
 
     - name: 4. Extract RV zip file to parent directory
       unarchive:
         src: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         dest: "{{ rv_extract_parent_path }}"
         remote_src: yes
+      when: not rv_installed.stat.exists
 
     - name: 5. Rename extracted RV folder to RV-2025.0.0
       command: mv {{ rv_extract_parent_path }}/RV {{ rv_final_path }}
       args:
         creates: "{{ rv_final_path }}"
-        
+      when: not rv_installed.stat.exists
+
     - name: 6. Set ownership and proper permissions on RV directory
       file:
         path: "{{ rv_final_path }}"
@@ -59,6 +73,7 @@
         mode: 'u=rwX,g=rX,o=rX'
         owner: root
         group: root
+      when: not rv_installed.stat.exists
 
     - name: 7. Ensure RV binaries are executable
       file:
@@ -66,6 +81,7 @@
         state: directory
         recurse: yes
         mode: 'u=rwx,g=rx,o=rx'
+      when: not rv_installed.stat.exists
 
     - name: 8. Create RV wrapper script (isolates RV environment)
       copy:
@@ -136,3 +152,8 @@
       file:
         path: "/tmp/RV-Linux-Rocky9-Release-2025.0.0.zip"
         state: absent
+      when: not rv_installed.stat.exists
+
+    - name: Final installation status
+      debug:
+        msg: "{{ '✅ RV 2025.0.0 installed successfully at ' + rv_final_path if not rv_installed.stat.exists else '✅ RV 2025.0.0 already installed - configuration updated' }}"
