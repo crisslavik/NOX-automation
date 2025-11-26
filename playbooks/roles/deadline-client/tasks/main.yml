@@ -30,6 +30,7 @@
   changed_when: false
   when:
     - not deadline_installed.stat.exists
+    - deadline_repo_installer.stat.exists is defined
     - not deadline_repo_installer.stat.exists
 
 - name: Copy Deadline installer from repository to target (from Files/deadline/)

@@ -38,6 +38,7 @@
   changed_when: false
   when:
     - daselement_installed_check.rc != 0
+    - daselement_repo_installer.stat.exists is defined
     - not daselement_repo_installer.stat.exists
 
 - name: Copy DasElement installer from repository to target (from Files/das-element/)
