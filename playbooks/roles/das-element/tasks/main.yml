@@ -66,11 +66,15 @@
       exec {{ daselement_install_path }}/das-element-lite-{{ daselement_lite_version }} "$@"
   when: daselement_variant == 'lite'
 
+- name: Check if DasElement install path exists and is a directory
+  ansible.builtin.stat:
+    path: "{{ daselement_install_path }}"
+  register: daselement_path_check
+  when: daselement_variant == 'lite'
+
 - name: Find system-wide DasElement desktop launcher file (Lite version)
   ansible.builtin.find:
-    paths:
-      - /usr/share/applications
-      - "{{ daselement_install_path }}"
+    paths: "{{ ['/usr/share/applications'] + ([daselement_install_path] if daselement_path_check.stat.exists and daselement_path_check.stat.isdir else []) }}"
     patterns: '*das-element*.desktop'
     recurse: yes
   register: system_desktop_files

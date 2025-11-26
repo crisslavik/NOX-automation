@@ -1,4 +1,20 @@
 ---
+- name: Check if Sublime Text is already installed
+  ansible.builtin.command: subl --version
+  register: sublime_check
+  failed_when: false
+  changed_when: false
+
+- name: Display Sublime Text installation status
+  ansible.builtin.debug:
+    msg: "{{ '✅ Sublime Text already installed - skipping installation' if sublime_check.rc == 0 else '⚙️ Sublime Text not found - proceeding with installation' }}"
+
+- name: Import Sublime Text GPG key
+  ansible.builtin.rpm_key:
+    key: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
+    state: present
+  when: sublime_check.rc != 0
+
 - name: Add Sublime Text repository
   ansible.builtin.yum_repository:
     name: sublime-text
@@ -7,21 +23,25 @@
     gpgcheck: yes
     gpgkey: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
     enabled: yes
+  when: sublime_check.rc != 0
   register: sublime_repo
 
 - name: Display repository configuration status
   ansible.builtin.debug:
     msg: "Sublime Text repository: {{ 'configured' if sublime_repo is succeeded else 'failed to configure' }}"
+  when: sublime_check.rc != 0
 
 - name: Install Sublime Text
   ansible.builtin.dnf:
     name: sublime-text
     state: present
+  when: sublime_check.rc != 0
   register: sublime_install
 
 - name: Display Sublime Text installation status
   ansible.builtin.debug:
     msg: "Sublime Text installation: {{ 'already present' if not sublime_install.changed else 'newly installed' }}"
+  when: sublime_check.rc != 0
 
 - name: Set Sublime Text as default text editor
   ansible.builtin.alternatives:
