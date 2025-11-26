@@ -48,6 +48,7 @@
     mode: '0755'
   when:
     - not deadline_installed.stat.exists
+    - deadline_repo_installer.stat.exists is defined
     - not deadline_repo_installer.stat.exists
     - deadline_repo_installer_fallback.stat.exists is defined
     - deadline_repo_installer_fallback.stat.exists
