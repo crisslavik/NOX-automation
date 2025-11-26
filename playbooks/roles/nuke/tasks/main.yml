@@ -12,7 +12,21 @@
     - install
     - debug
 
-# Step 1: Install Dependencies
+# Step 1: Check if already installed (do this FIRST to avoid unnecessary copying)
+- name: Check if Nuke is already installed
+  ansible.builtin.stat:
+    path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }}"
+  register: nuke_installed
+  tags:
+    - install
+
+- name: Display Nuke installation status
+  ansible.builtin.debug:
+    msg: "{{ '✅ Nuke ' + nuke_version + ' already installed - skipping installation' if nuke_installed.stat.exists else '⚙️ Nuke not found - proceeding with installation' }}"
+  tags:
+    - install
+
+# Step 2: Install Dependencies (only if not installed)
 - name: Install required dependencies
   ansible.builtin.dnf:
     name:
@@ -22,11 +36,12 @@
       - libglvnd-opengl        # Vendor-neutral OpenGL dispatch library (provides libOpenGL.so.0)
       - libglvnd-glx           # GLX support
     state: present
+  when: not nuke_installed.stat.exists
   tags:
     - install
     - dependencies
 
-# Step 2: Ensure installer is available (copy from Files/ on controller)
+# Step 3: Ensure installer is available (copy from Files/ on controller - only if not installed)
 - name: Check if Nuke installer exists in repository Files/nuke/
   ansible.builtin.stat:
     path: "{{ nuke_installer_repo_dir }}/{{ nuke_installer }}"
@@ -35,6 +50,7 @@
   become: false
   run_once: true
   changed_when: false
+  when: not nuke_installed.stat.exists
   tags:
     - install
 
@@ -46,7 +62,9 @@
   become: false
   run_once: true
   changed_when: false
-  when: not nuke_repo_installer.stat.exists
+  when:
+    - not nuke_installed.stat.exists
+    - not nuke_repo_installer.stat.exists
   tags:
     - install
 
@@ -55,10 +73,11 @@
     msg: |
       Files/nuke/ check:
         Path: {{ nuke_installer_repo_dir }}/{{ nuke_installer }}
-        Exists: {{ nuke_repo_installer.stat.exists }}
+        Exists: {{ nuke_repo_installer.stat.exists | default('SKIPPED') }}
       Files/ fallback check:
         Path: {{ nuke_installer_repo_dir_fallback }}/{{ nuke_installer }}
         Exists: {{ nuke_repo_installer_fallback.stat.exists | default('SKIPPED') }}
+  when: not nuke_installed.stat.exists
   tags:
     - install
     - debug
@@ -68,7 +87,9 @@
     src: "{{ nuke_installer_repo_dir }}/{{ nuke_installer }}"
     dest: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
     mode: '0755'
-  when: nuke_repo_installer.stat.exists
+  when:
+    - not nuke_installed.stat.exists
+    - nuke_repo_installer.stat.exists
   tags:
     - install
 
@@ -78,13 +99,14 @@
     dest: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
     mode: '0755'
   when:
+    - not nuke_installed.stat.exists
     - not nuke_repo_installer.stat.exists
     - nuke_repo_installer_fallback.stat.exists is defined
     - nuke_repo_installer_fallback.stat.exists
   tags:
     - install
 
-# Step 2b: Check for installer on target
+# Step 4: Check for installer on target
 - name: Check if Nuke installer exists on target
   ansible.builtin.stat:
     path: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
@@ -93,14 +115,7 @@
   tags:
     - install
 
-- name: Check if Nuke is already installed
-  ansible.builtin.stat:
-    path: "{{ nuke_install_dir }}/Nuke{{ nuke_version }}/{{ nuke_executable_name }}"
-  register: nuke_installed
-  tags:
-    - install
-
-# Step 3: Install Nuke
+# Step 5: Install Nuke
 - name: Install Nuke to /opt directory (if installer present and not installed)
   ansible.builtin.command: >
     {{ nuke_installer_dir }}/{{ nuke_installer }} --prefix={{ nuke_install_dir }} --accept-foundry-eula

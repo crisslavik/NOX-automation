@@ -9,19 +9,12 @@
   ansible.builtin.debug:
     msg: "{{ '✅ Sublime Text already installed - skipping installation' if sublime_check.rc == 0 else '⚙️ Sublime Text not found - proceeding with installation' }}"
 
-- name: Import Sublime Text GPG key
-  ansible.builtin.rpm_key:
-    key: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
-    state: present
-  when: sublime_check.rc != 0
-
 - name: Add Sublime Text repository
   ansible.builtin.yum_repository:
     name: sublime-text
     description: Sublime Text - x86_64 - Stable
     baseurl: https://download.sublimetext.com/rpm/stable/x86_64
-    gpgcheck: yes
-    gpgkey: https://download.sublimetext.com/sublimehq-rpm-pub.gpg
+    gpgcheck: no
     enabled: yes
   when: sublime_check.rc != 0
   register: sublime_repo
