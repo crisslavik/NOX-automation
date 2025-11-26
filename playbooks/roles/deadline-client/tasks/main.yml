@@ -85,6 +85,7 @@
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate {{ client_cert_path }}
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLPassword {{ client_cert_password }}
   environment:
     HOME: /root
   changed_when: true
