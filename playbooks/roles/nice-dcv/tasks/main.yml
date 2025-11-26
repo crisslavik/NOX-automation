@@ -1,27 +1,81 @@
 ---
-- name: Ensure DCV packages directory exists (optional)
-  file:
+# ====== DCV RPM INSTALLATION ======
+# Check if RPMs exist in repository Files/nice-dcv directory
+- name: Check for DCV RPM files in repository
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../Files/nice-dcv"
+    patterns: "*.rpm"
+  delegate_to: localhost
+  register: dcv_repo_rpms
+  become: no
+
+# Create target directory and copy RPMs if found in repository
+- name: Create temporary DCV packages directory on target
+  ansible.builtin.file:
     path: "{{ nice_dcv_packages_dir }}"
     state: directory
     mode: '0755'
 
+- name: Copy DCV RPM files from repository to target
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ nice_dcv_packages_dir }}/{{ item.path | basename }}"
+    mode: '0644'
+  loop: "{{ dcv_repo_rpms.files }}"
+  when: dcv_repo_rpms.matched > 0
+
+- name: Display DCV installation source
+  ansible.builtin.debug:
+    msg: |
+      {% if dcv_repo_rpms.matched > 0 %}
+      📦 Found {{ dcv_repo_rpms.matched }} DCV RPM(s) in Files/nice-dcv/, copied to target
+      {% else %}
+      ⚠️  No DCV RPMs found in Files/nice-dcv/
+
+      Please download NICE DCV RPMs and place them in:
+      Files/nice-dcv/
+
+      Or manually place RPMs at {{ nice_dcv_packages_dir }} on the target machine
+      {% endif %}
+
+# Install RPMs from target directory (whether copied from repo or manually placed)
 - name: Install any NICE DCV RPMs found under {{ nice_dcv_packages_dir }}
   ansible.builtin.shell: |
     set -e
+    rpm_count=0
     for rpm in {{ nice_dcv_packages_dir }}/*.rpm; do
       [ -f "$rpm" ] || continue
+      rpm_count=$((rpm_count + 1))
+      echo "Installing: $(basename $rpm)"
       dnf -y install "$rpm" || yum -y install "$rpm" || true
     done
+    if [ $rpm_count -eq 0 ]; then
+      echo "No RPM files found"
+      exit 1
+    fi
+    echo "Installed $rpm_count RPM(s)"
   register: dcv_install_result
   failed_when: false
-  changed_when: dcv_install_result.rc == 0
+  changed_when: "'Installed' in dcv_install_result.stdout"
 
-- name: Clean up temporary DCV packages directory (if empty)
-  file:
+- name: Display DCV installation result
+  ansible.builtin.debug:
+    msg: |
+      {% if dcv_install_result.rc == 0 %}
+      ✅ DCV RPMs installed successfully
+      {{ dcv_install_result.stdout }}
+      {% else %}
+      ⚠️  DCV installation skipped - no RPM files found
+      To install DCV, place RPM files in Files/nice-dcv/ and re-run this playbook
+      {% endif %}
+
+- name: Clean up temporary DCV packages directory
+  ansible.builtin.file:
     path: "{{ nice_dcv_packages_dir }}"
     state: absent
-  when: dcv_install_result is defined
+  when: dcv_repo_rpms.matched > 0
 
+# ====== SSSD CONFIGURATION ======
 - name: Replace sssd.conf with repository version if provided
   copy:
     src: "../../Authentication_SSSD/sssd.conf"
@@ -29,6 +83,7 @@
     mode: '0600'
   notify: restart sssd
 
+# ====== DCV SERVICE CONFIGURATION ======
 - name: Create systemd override directory for dcvserver
   file:
     path: /etc/systemd/system/dcvserver.service.d
@@ -61,6 +116,7 @@
     line: 'After=network-online.target'
   notify: daemon reload
 
+# ====== DCV CONFIGURATION FILES ======
 - name: Ensure /etc/dcv exists
   file:
     path: /etc/dcv
@@ -99,6 +155,7 @@
     group: root
     mode: '0644'
 
+# ====== FIREWALL CONFIGURATION ======
 - name: Ensure firewalld is installed (for DCV)
   dnf:
     name: firewalld
