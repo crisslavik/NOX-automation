@@ -2,6 +2,6 @@
 # Defaults for deadline-client role
 deadline_client_installer: "/tmp/deadline_client_installer"
 deadline_client_version: "latest"
----
-# Defaults for deadline-client
+
+# Path to Deadline client installer on the target
 deadline_installer_path: "/tmp/Thinkbox_Deadline_Client_Installer.run"
