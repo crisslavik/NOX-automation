@@ -19,6 +19,7 @@
     path: "{{ nuke_installer_repo_dir }}/{{ nuke_installer }}"
   register: nuke_repo_installer
   delegate_to: localhost
+  become: false
   run_once: true
   changed_when: false
   tags:
