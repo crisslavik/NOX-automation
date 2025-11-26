@@ -13,7 +13,27 @@
     - install
     - dependencies
 
-# Step 2: Check for installer
+# Step 2: Ensure installer is available (copy from Files/ on controller)
+- name: Check if Nuke installer exists in repository Files/
+  ansible.builtin.stat:
+    path: "{{ nuke_installer_repo_dir }}/{{ nuke_installer }}"
+  register: nuke_repo_installer
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+  tags:
+    - install
+
+- name: Copy Nuke installer from repository to target
+  ansible.builtin.copy:
+    src: "{{ nuke_installer_repo_dir }}/{{ nuke_installer }}"
+    dest: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
+    mode: '0755'
+  when: nuke_repo_installer.stat.exists
+  tags:
+    - install
+
+# Step 2b: Check for installer on target
 - name: Check if Nuke installer exists on target
   ansible.builtin.stat:
     path: "{{ nuke_installer_dir }}/{{ nuke_installer }}"
