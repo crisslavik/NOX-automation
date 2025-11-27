@@ -87,6 +87,7 @@
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL true
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyValidateCertificate false
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate "{{ client_cert_path }}"
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting LicenseMode Standard
   environment:
     HOME: /root
   changed_when: true
@@ -98,6 +99,7 @@
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL false
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting LicenseMode Standard
   environment:
     HOME: /root
   changed_when: true
@@ -179,6 +181,7 @@
       ProxyUseSSL=true
       ProxyValidateCertificate=false
       ProxySSLCertificate={{ client_cert_path }}
+      LicenseMode=Standard
   loop: "{{ ad_user_homes.files }}"
   when:
     - ad_user_homes.files is defined and ad_user_homes.files | length > 0
@@ -196,6 +199,7 @@
       ConnectionType=Remote
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=false
+      LicenseMode=Standard
   loop: "{{ ad_user_homes.files }}"
   when:
     - ad_user_homes.files is defined and ad_user_homes.files | length > 0
@@ -220,6 +224,7 @@
       ProxyUseSSL=true
       ProxyValidateCertificate=false
       ProxySSLCertificate={{ client_cert_path }}
+      LicenseMode=Standard
   when: deadline_use_ssl | default(true) | bool
 
 - name: Configure deadline.ini in /etc/skel for future users (without SSL)
@@ -231,4 +236,5 @@
       ConnectionType=Remote
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=false
+      LicenseMode=Standard
   when: not (deadline_use_ssl | default(true) | bool)
