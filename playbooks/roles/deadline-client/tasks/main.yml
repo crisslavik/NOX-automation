@@ -115,6 +115,76 @@
       export DEADLINE_PATH={{ deadline_install_dir }}
       export PATH=$PATH:{{ deadline_install_dir }}/bin
 
+# Step 5b: Create systemd service for Deadline Launcher
+- name: Create Deadline Launcher systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/deadline-launcher.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Deadline Launcher Service
+      After=network.target nfs-client.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User={{ render_user }}
+      Group={{ render_user }}
+      Environment="HOME=/var/lib/{{ render_user }}"
+      ExecStart={{ deadline_install_dir }}/bin/deadlinelauncher -nogui
+      Restart=always
+      RestartSec=10
+      StandardOutput=journal
+      StandardError=journal
+
+      # Ensure clean shutdown to release licenses
+      TimeoutStopSec=30
+      KillMode=mixed
+      KillSignal=SIGTERM
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Create home directory for render user
+  ansible.builtin.file:
+    path: /var/lib/{{ render_user }}
+    state: directory
+    owner: "{{ render_user }}"
+    group: "{{ render_user }}"
+    mode: '0755'
+
+- name: Create Thinkbox/Deadline10 config directory for render user
+  ansible.builtin.file:
+    path: /var/lib/{{ render_user }}/Thinkbox/Deadline10
+    state: directory
+    owner: "{{ render_user }}"
+    group: "{{ render_user }}"
+    mode: '0755'
+
+- name: Configure deadline.ini for render user (systemd service)
+  ansible.builtin.copy:
+    dest: /var/lib/{{ render_user }}/Thinkbox/Deadline10/deadline.ini
+    owner: "{{ render_user }}"
+    group: "{{ render_user }}"
+    mode: '0644'
+    content: |
+      [Deadline]
+      ConnectionType=Remote
+      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
+      ProxyUseSSL={{ 'true' if deadline_use_ssl | default(true) | bool else 'false' }}
+      ProxyValidateCertificate=false
+      {% if deadline_use_ssl | default(true) | bool %}
+      ProxySSLCertificate={{ client_cert_path }}
+      {% endif %}
+      LicenseMode=Standard
+
+- name: Enable and start Deadline Launcher service
+  ansible.builtin.systemd:
+    name: deadline-launcher
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
 # Step 6: Configure Desktop Shortcuts (System-wide)
 - name: Copy Deadline desktop files to system applications
   ansible.builtin.copy:
