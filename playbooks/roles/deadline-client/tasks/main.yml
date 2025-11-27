@@ -80,17 +80,28 @@
     msg: "{{ '✅ Deadline client installed successfully at ' + deadline_install_dir if not deadline_installed.stat.exists else '✅ Deadline client already installed - configuration updated' }}"
 
 # Step 4: Configure Deadline Repository Connection
-- name: Configure Deadline connection to RCS server
+- name: Configure Deadline connection to RCS server (SSL without client cert)
   ansible.builtin.shell: |
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
-    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate {{ client_cert_path }}
-    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLPassword {{ client_cert_password }}
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL true
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyValidateCertificate false
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate ""
   environment:
     HOME: /root
   changed_when: true
+  when: deadline_use_ssl | default(true) | bool
+  ignore_errors: yes
+
+- name: Configure Deadline connection to RCS server (No SSL)
+  ansible.builtin.shell: |
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL false
+  environment:
+    HOME: /root
+  changed_when: true
+  when: not (deadline_use_ssl | default(true) | bool)
   ignore_errors: yes
 
 # Step 5: Add Deadline to system PATH
@@ -144,9 +155,9 @@
       files: "{{ ad_user_homes_raw.files | selectattr('uid', 'gt', 400000000) | list }}"
   when: ad_user_homes_raw.files is defined
 
-- name: Create .deadline directory for existing AD users
+- name: Create Thinkbox/Deadline10 directory for existing AD users
   ansible.builtin.file:
-    path: "{{ item.path }}/.deadline"
+    path: "{{ item.path }}/Thinkbox/Deadline10"
     state: directory
     owner: "{{ item.path | basename }}"
     group: "{{ item.gid }}"
@@ -155,40 +166,67 @@
   when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
   failed_when: false
 
-- name: Configure deadline.ini for existing AD users
+- name: Configure deadline.ini for existing AD users (with SSL)
   ansible.builtin.copy:
-    dest: "{{ item.path }}/.deadline/deadline.ini"
+    dest: "{{ item.path }}/Thinkbox/Deadline10/deadline.ini"
     owner: "{{ item.path | basename }}"
     group: "{{ item.gid }}"
     mode: '0644'
     content: |
-      [ConnectionType]
-      Type=Remote
-      [Proxy]
-      Root={{ rcs_server }}:{{ rcs_port }}
-      SSLCertificate={{ client_cert_path }}
-      [AutoConfiguration]
-      Enabled=True
+      [Deadline]
+      ConnectionType=Remote
+      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
+      ProxyUseSSL=true
+      ProxyValidateCertificate=false
   loop: "{{ ad_user_homes.files }}"
-  when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+  when:
+    - ad_user_homes.files is defined and ad_user_homes.files | length > 0
+    - deadline_use_ssl | default(true) | bool
+  failed_when: false
+
+- name: Configure deadline.ini for existing AD users (without SSL)
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/Thinkbox/Deadline10/deadline.ini"
+    owner: "{{ item.path | basename }}"
+    group: "{{ item.gid }}"
+    mode: '0644'
+    content: |
+      [Deadline]
+      ConnectionType=Remote
+      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
+      ProxyUseSSL=false
+  loop: "{{ ad_user_homes.files }}"
+  when:
+    - ad_user_homes.files is defined and ad_user_homes.files | length > 0
+    - not (deadline_use_ssl | default(true) | bool)
   failed_when: false
 
 # Step 8: Configure for Future AD Users (/etc/skel/)
-- name: Create .deadline directory in /etc/skel
+- name: Create Thinkbox/Deadline10 directory in /etc/skel
   ansible.builtin.file:
-    path: /etc/skel/.deadline
+    path: /etc/skel/Thinkbox/Deadline10
     state: directory
     mode: '0755'
 
-- name: Configure deadline.ini in /etc/skel for future users
+- name: Configure deadline.ini in /etc/skel for future users (with SSL)
   ansible.builtin.copy:
-    dest: /etc/skel/.deadline/deadline.ini
+    dest: /etc/skel/Thinkbox/Deadline10/deadline.ini
     mode: '0644'
     content: |
-      [ConnectionType]
-      Type=Remote
-      [Proxy]
-      Root={{ rcs_server }}:{{ rcs_port }}
-      SSLCertificate={{ client_cert_path }}
-      [AutoConfiguration]
-      Enabled=True
+      [Deadline]
+      ConnectionType=Remote
+      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
+      ProxyUseSSL=true
+      ProxyValidateCertificate=false
+  when: deadline_use_ssl | default(true) | bool
+
+- name: Configure deadline.ini in /etc/skel for future users (without SSL)
+  ansible.builtin.copy:
+    dest: /etc/skel/Thinkbox/Deadline10/deadline.ini
+    mode: '0644'
+    content: |
+      [Deadline]
+      ConnectionType=Remote
+      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
+      ProxyUseSSL=false
+  when: not (deadline_use_ssl | default(true) | bool)
