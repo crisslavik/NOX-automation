@@ -80,13 +80,13 @@
     msg: "{{ '✅ Deadline client installed successfully at ' + deadline_install_dir if not deadline_installed.stat.exists else '✅ Deadline client already installed - configuration updated' }}"
 
 # Step 4: Configure Deadline Repository Connection
-- name: Configure Deadline connection to RCS server (SSL without client cert)
+- name: Configure Deadline connection to RCS server (SSL with client cert)
   ansible.builtin.shell: |
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL true
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyValidateCertificate false
-    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate ""
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate "{{ client_cert_path }}"
   environment:
     HOME: /root
   changed_when: true
@@ -178,6 +178,7 @@
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=true
       ProxyValidateCertificate=false
+      ProxySSLCertificate={{ client_cert_path }}
   loop: "{{ ad_user_homes.files }}"
   when:
     - ad_user_homes.files is defined and ad_user_homes.files | length > 0
@@ -218,6 +219,7 @@
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=true
       ProxyValidateCertificate=false
+      ProxySSLCertificate={{ client_cert_path }}
   when: deadline_use_ssl | default(true) | bool
 
 - name: Configure deadline.ini in /etc/skel for future users (without SSL)
