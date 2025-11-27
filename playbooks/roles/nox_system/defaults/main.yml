@@ -7,5 +7,5 @@ firewall_enabled: true
 firewall_permanent: true
 
 # SELinux configuration
-selinux_state: "permissive"  # Options: enforcing, permissive, disabled
+selinux_state: "disabled"  # Options: enforcing, permissive, disabled
 selinux_policy: "targeted"

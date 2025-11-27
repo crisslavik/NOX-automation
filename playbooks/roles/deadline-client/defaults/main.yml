@@ -17,7 +17,7 @@ client_cert_path: "{{ deadline_cert_path }}"
 client_cert_password: "{{ deadline_cert_password }}"
 
 # SSL connection settings
-deadline_use_ssl: true  # RCS requires SSL, but client cert authentication is disabled on server
+deadline_use_ssl: true  # RCS server requires HTTPS (hardcoded in ASP.Net Core Kestrel)
 
 # Daemon settings (inherited from group_vars/all.yml)
 render_user: "{{ deadline_render_user }}"
