@@ -1,0 +1,6 @@
+[Deadline]
+ConnectionType=Remote
+ProxyRoot={{ rcs_server }}:{{ rcs_port }}
+ProxyUseSSL={{ 'true' if deadline_use_ssl else 'false' }}
+ProxyValidateCertificate=false
+LicenseMode=Standard

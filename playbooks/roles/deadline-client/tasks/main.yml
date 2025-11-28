@@ -124,35 +124,11 @@
 
 # Step 5c: Create systemd service for Deadline Launcher
 - name: Create Deadline Launcher systemd service
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: deadline-launcher.service.j2
     dest: /etc/systemd/system/deadline-launcher.service
     mode: '0644'
-    content: |
-      [Unit]
-      Description=Deadline Launcher Service
-      After=network.target nfs-client.target
-      Wants=network-online.target
-
-      [Service]
-      Type=simple
-      User={{ render_user }}
-      Group={{ render_user }}
-      Environment="HOME=/var/lib/{{ render_user }}"
-      Environment="foundry_LICENSE={{ foundry_license }}"
-      WorkingDirectory=/var/lib/{{ render_user }}
-      ExecStart={{ deadline_install_dir }}/bin/deadlinelauncher -nogui
-      Restart=always
-      RestartSec=10
-      StandardOutput=journal
-      StandardError=journal
-
-      # Ensure clean shutdown to release licenses
-      TimeoutStopSec=30
-      KillMode=mixed
-      KillSignal=SIGTERM
-
-      [Install]
-      WantedBy=multi-user.target
+  notify: Reload systemd daemon
 
 - name: Create home directory for render user
   ansible.builtin.file:
@@ -171,18 +147,12 @@
     mode: '0755'
 
 - name: Configure deadline.ini for render user (systemd service)
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: deadline.ini.j2
     dest: /var/lib/{{ render_user }}/Thinkbox/Deadline10/deadline.ini
     owner: "{{ render_user }}"
     group: "{{ render_user }}"
     mode: '0644'
-    content: |
-      [Deadline]
-      ConnectionType=Remote
-      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
-      ProxyUseSSL={{ 'true' if deadline_use_ssl | default(true) | bool else 'false' }}
-      ProxyValidateCertificate=false
-      LicenseMode=Standard
 
 - name: Enable and start Deadline Launcher service
   ansible.builtin.systemd:
@@ -245,9 +215,8 @@
   ansible.builtin.file:
     path: "{{ item.stat.path }}/Thinkbox/Deadline10"
     state: directory
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
     mode: '0755'
+  become_user: "{{ item.stat.pw_name }}"
   loop: "{{ ad_user_stats.results }}"
   when:
     - ad_user_stats.results is defined
@@ -255,46 +224,19 @@
     - item.stat.exists
   failed_when: false
 
-- name: Configure deadline.ini for existing AD users (with SSL)
-  ansible.builtin.copy:
+- name: Configure deadline.ini for existing AD users
+  ansible.builtin.template:
+    src: deadline.ini.j2
     dest: "{{ item.stat.path }}/Thinkbox/Deadline10/deadline.ini"
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
     mode: '0644'
-    content: |
-      [Deadline]
-      ConnectionType=Remote
-      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
-      ProxyUseSSL=true
-      ProxyValidateCertificate=false
-      LicenseMode=Standard
+  become_user: "{{ item.stat.pw_name }}"
   loop: "{{ ad_user_stats.results }}"
   when:
     - ad_user_stats.results is defined
     - item.stat is defined
     - item.stat.exists
-    - deadline_use_ssl | default(true) | bool
   failed_when: false
 
-- name: Configure deadline.ini for existing AD users (without SSL)
-  ansible.builtin.copy:
-    dest: "{{ item.stat.path }}/Thinkbox/Deadline10/deadline.ini"
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
-    mode: '0644'
-    content: |
-      [Deadline]
-      ConnectionType=Remote
-      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
-      ProxyUseSSL=false
-      LicenseMode=Standard
-  loop: "{{ ad_user_stats.results }}"
-  when:
-    - ad_user_stats.results is defined
-    - item.stat is defined
-    - item.stat.exists
-    - not (deadline_use_ssl | default(true) | bool)
-  failed_when: false
 
 # Step 8: Configure for Future AD Users (/etc/skel/)
 - name: Create Thinkbox/Deadline10 directory in /etc/skel
@@ -303,27 +245,8 @@
     state: directory
     mode: '0755'
 
-- name: Configure deadline.ini in /etc/skel for future users (with SSL)
-  ansible.builtin.copy:
+- name: Configure deadline.ini in /etc/skel for future users
+  ansible.builtin.template:
+    src: deadline.ini.j2
     dest: /etc/skel/Thinkbox/Deadline10/deadline.ini
     mode: '0644'
-    content: |
-      [Deadline]
-      ConnectionType=Remote
-      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
-      ProxyUseSSL=true
-      ProxyValidateCertificate=false
-      LicenseMode=Standard
-  when: deadline_use_ssl | default(true) | bool
-
-- name: Configure deadline.ini in /etc/skel for future users (without SSL)
-  ansible.builtin.copy:
-    dest: /etc/skel/Thinkbox/Deadline10/deadline.ini
-    mode: '0644'
-    content: |
-      [Deadline]
-      ConnectionType=Remote
-      ProxyRoot={{ rcs_server }}:{{ rcs_port }}
-      ProxyUseSSL=false
-      LicenseMode=Standard
-  when: not (deadline_use_ssl | default(true) | bool)

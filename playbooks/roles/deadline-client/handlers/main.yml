@@ -1,0 +1,9 @@
+---
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Restart deadline-launcher
+  ansible.builtin.systemd:
+    name: deadline-launcher
+    state: restarted

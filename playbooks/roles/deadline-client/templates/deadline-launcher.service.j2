@@ -1,0 +1,25 @@
+[Unit]
+Description=Deadline Launcher Service
+After=network.target nfs-client.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ render_user }}
+Group={{ render_user }}
+Environment="HOME=/var/lib/{{ render_user }}"
+Environment="foundry_LICENSE={{ foundry_license }}"
+WorkingDirectory=/var/lib/{{ render_user }}
+ExecStart={{ deadline_install_dir }}/bin/deadlinelauncher -nogui
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Ensure clean shutdown to release licenses
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
