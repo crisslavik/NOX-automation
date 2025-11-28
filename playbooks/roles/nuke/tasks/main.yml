@@ -255,15 +255,28 @@
   tags:
     - desktop
 
+- name: Get ownership info for AD user home directories
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop: "{{ ad_users.files }}"
+  register: ad_user_stats
+  when: ad_users.files is defined and ad_users.files | length > 0
+  failed_when: false
+  tags:
+    - desktop
+
 - name: Create .local/share/applications for existing users
   ansible.builtin.file:
-    path: "{{ item.path }}/.local/share/applications"
+    path: "{{ item.stat.path }}/.local/share/applications"
     state: directory
     mode: '0755'
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.path | basename }}"
-  loop: "{{ ad_users.files }}"
-  when: ad_users.files is defined and ad_users.files | length > 0
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
   failed_when: false
   tags:
     - desktop
@@ -271,13 +284,16 @@
 - name: Deploy Nuke desktop entry to existing users
   ansible.builtin.copy:
     src: "/etc/skel/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
-    dest: "{{ item.path }}/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
+    dest: "{{ item.stat.path }}/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
     remote_src: yes
-    mode: '0755'
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.path | basename }}"
-  loop: "{{ ad_users.files }}"
-  when: ad_users.files is defined and ad_users.files | length > 0
+    mode: '0644'
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
   failed_when: false
   tags:
     - desktop
@@ -285,13 +301,16 @@
 - name: Deploy NukeX desktop entry to existing users
   ansible.builtin.copy:
     src: "/etc/skel/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
-    dest: "{{ item.path }}/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
+    dest: "{{ item.stat.path }}/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
     remote_src: yes
-    mode: '0755'
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.path | basename }}"
-  loop: "{{ ad_users.files }}"
-  when: ad_users.files is defined and ad_users.files | length > 0
+    mode: '0644'
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
   failed_when: false
   tags:
     - desktop
@@ -299,21 +318,27 @@
 - name: Deploy Nuke Studio desktop entry to existing users
   ansible.builtin.copy:
     src: "/etc/skel/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
-    dest: "{{ item.path }}/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
+    dest: "{{ item.stat.path }}/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
     remote_src: yes
-    mode: '0755'
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.path | basename }}"
-  loop: "{{ ad_users.files }}"
-  when: ad_users.files is defined and ad_users.files | length > 0
+    mode: '0644'
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
   failed_when: false
   tags:
     - desktop
 
 - name: Update desktop database for existing users
-  ansible.builtin.command: update-desktop-database {{ item.path }}/.local/share/applications
-  loop: "{{ ad_users.files }}"
-  when: ad_users.files is defined and ad_users.files | length > 0
+  ansible.builtin.command: update-desktop-database {{ item.stat.path }}/.local/share/applications
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
   changed_when: false
   failed_when: false
   tags:
