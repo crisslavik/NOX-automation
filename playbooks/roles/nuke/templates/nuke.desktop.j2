@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nuke {{ nuke_version }}
+Comment=Foundry Nuke Compositor
+Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} %f
+Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
+Terminal=false
+Categories=Graphics;2DGraphics;VFX;
+MimeType=application/x-nuke;

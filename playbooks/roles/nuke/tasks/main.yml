@@ -148,35 +148,11 @@
     - config
     - environment
 
-- name: Add foundry_LICENSE environment variable (idempotent)
-  ansible.builtin.lineinfile:
-    path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
-    create: yes
+- name: Configure Nuke environment variables
+  ansible.builtin.template:
+    src: nuke-env.sh.j2
+    dest: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
     mode: '0644'
-    line: "export foundry_LICENSE={{ foundry_license }}"
-    regexp: '^export foundry_LICENSE='
-  tags:
-    - config
-    - environment
-
-- name: Add PATH export for Nuke (CRITICAL - required for Nuke to work)
-  ansible.builtin.lineinfile:
-    path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
-    create: yes
-    mode: '0644'
-    line: "export PATH={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}:$PATH"
-    regexp: '^export PATH=.*Nuke.*:\$PATH'
-  tags:
-    - config
-    - environment
-
-- name: Add NUKE_PATH environment variable (idempotent)
-  ansible.builtin.lineinfile:
-    path: "/etc/profile.d/nuke{{ nuke_major_version }}.sh"
-    create: yes
-    mode: '0644'
-    line: "export NUKE_PATH={{ nuke_path }}"
-    regexp: '^export NUKE_PATH='
   tags:
     - config
     - environment
@@ -191,56 +167,26 @@
     - desktop
 
 - name: Create Nuke desktop entry in /etc/skel
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: nuke.desktop.j2
     dest: "/etc/skel/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
     mode: '0755'
-    content: |
-      [Desktop Entry]
-      Version=1.0
-      Type=Application
-      Name=Nuke {{ nuke_version }}
-      Comment=Foundry Nuke Compositor
-      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} %f
-      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
-      Terminal=false
-      Categories=Graphics;2DGraphics;VFX;
-      MimeType=application/x-nuke;
   tags:
     - desktop
 
 - name: Create NukeX desktop entry in /etc/skel
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: nukex.desktop.j2
     dest: "/etc/skel/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
     mode: '0755'
-    content: |
-      [Desktop Entry]
-      Version=1.0
-      Type=Application
-      Name=NukeX {{ nuke_version }}
-      Comment=Foundry NukeX Compositor
-      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} --nukex %f
-      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
-      Terminal=false
-      Categories=Graphics;2DGraphics;VFX;
-      MimeType=application/x-nuke;
   tags:
     - desktop
 
 - name: Create Nuke Studio desktop entry in /etc/skel
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: nukestudio.desktop.j2
     dest: "/etc/skel/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
     mode: '0755'
-    content: |
-      [Desktop Entry]
-      Version=1.0
-      Type=Application
-      Name=Nuke Studio {{ nuke_version }}
-      Comment=Foundry Nuke Studio
-      Exec=env foundry_LICENSE={{ foundry_license }} NUKE_PATH={{ nuke_path }} {{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/{{ nuke_executable_name }} --studio %f
-      Icon={{ nuke_install_dir }}/Nuke{{ nuke_version }}v{{ nuke_patch }}/plugins/icons/NukeApp256.png
-      Terminal=false
-      Categories=Graphics;2DGraphics;VFX;
-      MimeType=application/x-nuke;
   tags:
     - desktop
 
@@ -270,8 +216,7 @@
     path: "{{ item.stat.path }}/.local/share/applications"
     state: directory
     mode: '0755'
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
+  become_user: "{{ item.stat.pw_name }}"
   loop: "{{ ad_user_stats.results }}"
   when:
     - ad_user_stats.results is defined
@@ -282,13 +227,11 @@
     - desktop
 
 - name: Deploy Nuke desktop entry to existing users
-  ansible.builtin.copy:
-    src: "/etc/skel/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
+  ansible.builtin.template:
+    src: nuke.desktop.j2
     dest: "{{ item.stat.path }}/.local/share/applications/nuke{{ nuke_major_version }}.desktop"
-    remote_src: yes
     mode: '0644'
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
+  become_user: "{{ item.stat.pw_name }}"
   loop: "{{ ad_user_stats.results }}"
   when:
     - ad_user_stats.results is defined
@@ -299,13 +242,11 @@
     - desktop
 
 - name: Deploy NukeX desktop entry to existing users
-  ansible.builtin.copy:
-    src: "/etc/skel/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
+  ansible.builtin.template:
+    src: nukex.desktop.j2
     dest: "{{ item.stat.path }}/.local/share/applications/nukex{{ nuke_major_version }}.desktop"
-    remote_src: yes
     mode: '0644'
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
+  become_user: "{{ item.stat.pw_name }}"
   loop: "{{ ad_user_stats.results }}"
   when:
     - ad_user_stats.results is defined
@@ -316,13 +257,11 @@
     - desktop
 
 - name: Deploy Nuke Studio desktop entry to existing users
-  ansible.builtin.copy:
-    src: "/etc/skel/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
+  ansible.builtin.template:
+    src: nukestudio.desktop.j2
     dest: "{{ item.stat.path }}/.local/share/applications/nukestudio{{ nuke_major_version }}.desktop"
-    remote_src: yes
     mode: '0644'
-    owner: "{{ item.stat.pw_name }}"
-    group: "{{ item.stat.gr_name }}"
+  become_user: "{{ item.stat.pw_name }}"
   loop: "{{ ad_user_stats.results }}"
   when:
     - ad_user_stats.results is defined
