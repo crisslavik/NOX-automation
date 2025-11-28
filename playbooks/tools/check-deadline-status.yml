@@ -1,0 +1,78 @@
+---
+# Check Deadline Status Across All Machines
+# Usage: ansible-playbook playbooks/tools/check-deadline-status.yml
+
+- name: Check Deadline Launcher Status
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Check if Deadline is installed
+      ansible.builtin.stat:
+        path: /opt/Thinkbox/Deadline10/bin/deadlinecommand
+      register: deadline_binary
+
+    - name: Check systemd service status
+      ansible.builtin.systemd:
+        name: deadline-launcher
+      register: deadline_service
+      failed_when: false
+      when: deadline_binary.stat.exists
+
+    - name: Check for running Deadline processes
+      ansible.builtin.shell: |
+        ps aux | grep -E 'deadlinelauncher|deadlineworker' | grep -v grep || echo "No Deadline processes running"
+      register: deadline_processes
+      changed_when: false
+      failed_when: false
+      when: deadline_binary.stat.exists
+
+    - name: Check Deadline connection to RCS
+      ansible.builtin.shell: |
+        /opt/Thinkbox/Deadline10/bin/deadlinecommand GetRepositoryVersion 2>&1 || echo "Cannot connect to repository"
+      register: deadline_connection
+      changed_when: false
+      failed_when: false
+      when: deadline_binary.stat.exists
+      environment:
+        HOME: /var/lib/render
+      become_user: render
+
+    - name: Check Deadline license configuration
+      ansible.builtin.shell: |
+        /opt/Thinkbox/Deadline10/bin/deadlinecommand GetIniFileSetting LicenseMode 2>&1 || echo "Cannot read license config"
+      register: deadline_license
+      changed_when: false
+      failed_when: false
+      when: deadline_binary.stat.exists
+      environment:
+        HOME: /var/lib/render
+      become_user: render
+
+    - name: Display Deadline status report
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Deadline Status: {{ inventory_hostname }}
+          ========================================
+
+          Installation: {{ 'INSTALLED ✓' if deadline_binary.stat.exists else 'NOT INSTALLED ✗' }}
+
+          {% if deadline_binary.stat.exists %}
+          Systemd Service:
+            Active: {{ deadline_service.status.ActiveState | default('unknown') }}
+            Sub-State: {{ deadline_service.status.SubState | default('unknown') }}
+            Enabled: {{ 'yes' if deadline_service.status.UnitFileState == 'enabled' else 'no' }}
+            Main PID: {{ deadline_service.status.MainPID | default('none') }}
+
+          Running Processes:
+          {{ deadline_processes.stdout | indent(2) }}
+
+          Repository Connection:
+          {{ deadline_connection.stdout | indent(2) }}
+
+          License Mode:
+          {{ deadline_license.stdout | indent(2) }}
+          {% endif %}
+          ========================================
