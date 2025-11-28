@@ -1,0 +1,167 @@
+---
+- name: Audit User Environment Variables (PATH, NUKE_PATH, etc.)
+  hosts: all
+  become: yes
+  vars:
+    ad_home_base: /home/ad.noxvfx.com
+    env_vars_to_check:
+      - NUKE_PATH
+      - PATH
+      - foundry_LICENSE
+      - DEADLINE_PATH
+
+  tasks:
+    - name: Display audit information
+      ansible.builtin.debug:
+        msg: |
+          🔍 Auditing Environment Variables on {{ inventory_hostname }}
+          Checking: {{ env_vars_to_check | join(', ') }}
+
+    - name: Find all AD user home directories
+      ansible.builtin.find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_user_homes
+      failed_when: false
+
+    - name: Get ownership info for AD user home directories
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop: "{{ ad_user_homes.files }}"
+      register: ad_user_stats
+      when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+      failed_when: false
+
+    - name: Check user dotfiles for environment variable overrides
+      ansible.builtin.shell: |
+        username="{{ item.stat.pw_name }}"
+        homedir="{{ item.stat.path }}"
+
+        echo "=== User: $username ==="
+        echo "Home: $homedir"
+        echo ""
+
+        # Check for NUKE_PATH, PATH, or other env var overrides
+        echo "--- Checking dotfiles for overrides ---"
+        for file in .bashrc .bash_profile .profile .zshrc; do
+          if [ -f "$homedir/$file" ]; then
+            matches=$(grep -E "NUKE_PATH|foundry_LICENSE|DEADLINE_PATH|export PATH.*Nuke|export PATH.*Deadline" "$homedir/$file" 2>/dev/null || true)
+            if [ -n "$matches" ]; then
+              echo "File: $file"
+              echo "$matches"
+              echo ""
+            fi
+          fi
+        done
+
+        # Simulate login shell environment for this user
+        echo "--- Current Environment (simulated login) ---"
+        sudo -i -u "$username" bash -c '
+          echo "NUKE_PATH=${NUKE_PATH:-NOT SET}"
+          echo "foundry_LICENSE=${foundry_LICENSE:-NOT SET}"
+          echo "DEADLINE_PATH=${DEADLINE_PATH:-NOT SET}"
+          echo "PATH (Nuke): $(echo $PATH | grep -o "/opt/Nuke[^:]*" || echo "NOT IN PATH")"
+          echo "PATH (Deadline): $(echo $PATH | grep -o "/opt/Thinkbox[^:]*" || echo "NOT IN PATH")"
+        '
+        echo ""
+        echo "================================================"
+        echo ""
+      args:
+        executable: /bin/bash
+      loop: "{{ ad_user_stats.results }}"
+      register: user_env_audit
+      when:
+        - ad_user_stats.results is defined
+        - item.stat is defined
+        - item.stat.exists
+      failed_when: false
+      changed_when: false
+
+    - name: Display audit results
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ user_env_audit.results }}"
+      when:
+        - user_env_audit.results is defined
+        - item.stdout_lines is defined
+      loop_control:
+        label: "{{ item.item.stat.pw_name if item.item is defined and item.item.stat is defined else 'unknown' }}"
+
+    - name: Check system-wide profile.d scripts
+      ansible.builtin.shell: |
+        echo "=== System-wide Environment Scripts ==="
+        echo ""
+
+        echo "--- /etc/profile.d/ ---"
+        ls -lh /etc/profile.d/*nuke* /etc/profile.d/*deadline* /etc/profile.d/*blender* 2>/dev/null || echo "No VFX scripts found"
+        echo ""
+
+        echo "--- Nuke Environment Script ---"
+        if [ -f /etc/profile.d/nuke16.sh ]; then
+          cat /etc/profile.d/nuke16.sh
+        else
+          echo "NOT FOUND"
+        fi
+        echo ""
+
+        echo "--- Deadline Environment Script ---"
+        if [ -f /etc/profile.d/deadline.sh ]; then
+          cat /etc/profile.d/deadline.sh
+        else
+          echo "NOT FOUND"
+        fi
+        echo ""
+
+        echo "--- Blender Environment Script ---"
+        if [ -f /etc/profile.d/blender_deadline.sh ]; then
+          cat /etc/profile.d/blender_deadline.sh
+        else
+          echo "NOT FOUND"
+        fi
+      args:
+        executable: /bin/bash
+      register: system_env_scripts
+      changed_when: false
+
+    - name: Display system-wide scripts
+      ansible.builtin.debug:
+        msg: "{{ system_env_scripts.stdout_lines }}"
+
+    - name: Create audit summary report
+      ansible.builtin.copy:
+        content: |
+          ========================================
+          Environment Audit Report
+          Host: {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+
+          {% for result in user_env_audit.results %}
+          {% if result.stdout_lines is defined %}
+          {{ result.stdout }}
+          {% endif %}
+          {% endfor %}
+
+          ========================================
+          System-Wide Configuration
+          ========================================
+          {{ system_env_scripts.stdout }}
+
+        dest: "/tmp/env-audit-{{ inventory_hostname }}.txt"
+        mode: '0644'
+      when: user_env_audit.results is defined
+
+    - name: Display summary
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
+          ✅ Environment Audit Complete for {{ inventory_hostname }}
+
+          Report saved to: /tmp/env-audit-{{ inventory_hostname }}.txt
+
+          Users audited: {{ ad_user_stats.results | length if ad_user_stats.results is defined else 0 }}
+
+          To view the full report:
+            ssh {{ inventory_hostname }} cat /tmp/env-audit-{{ inventory_hostname }}.txt
