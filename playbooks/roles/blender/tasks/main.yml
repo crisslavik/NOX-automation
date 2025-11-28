@@ -1,32 +1,32 @@
 ---
 - name: Check if Blender is already installed
-  stat:
+  ansible.builtin.stat:
     path: "/usr/local/bin/blender"
   register: blender_installed
 
 - name: Display Blender installation status
-  debug:
+  ansible.builtin.debug:
     msg: "{{ '✅ Blender already installed - skipping download and installation' if blender_installed.stat.exists else '⚙️ Blender not found - proceeding with installation' }}"
 
 - name: Get Blender download page content
-  uri:
+  ansible.builtin.uri:
     url: "https://www.blender.org/download/"
     return_content: yes
   register: blender_page
   when: not blender_installed.stat.exists
 
 - name: Extract latest Blender version number
-  set_fact:
+  ansible.builtin.set_fact:
     blender_latest_version: "{{ blender_page.content | regex_search('blender-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64\\.tar\\.xz', '\\1') | first }}"
   when: not blender_installed.stat.exists
 
 - name: Construct download URL
-  set_fact:
+  ansible.builtin.set_fact:
     blender_download_url: "https://download.blender.org/release/Blender{{ blender_latest_version.split('.')[0] }}.{{ blender_latest_version.split('.')[1] }}/blender-{{ blender_latest_version }}-linux-x64.tar.xz"
   when: not blender_installed.stat.exists
 
 - name: Download Blender tarball
-  get_url:
+  ansible.builtin.get_url:
     url: "{{ blender_download_url }}"
     dest: "{{ blender_tarball_dest }}"
     mode: '0644'
@@ -34,39 +34,49 @@
   when: not blender_installed.stat.exists
 
 - name: Extract version from tarball filename
-  shell: "tar -tzf {{ blender_tarball_dest }} | head -1 | cut -d'/' -f1 | sed 's/blender-//; s/-linux-x64//'"
-  register: detected_version
+  ansible.builtin.command: tar -tzf {{ blender_tarball_dest }}
+  register: tarball_contents
   changed_when: false
+  when: not blender_installed.stat.exists
+
+- name: Parse Blender version from tarball
+  ansible.builtin.set_fact:
+    detected_version: "{{ tarball_contents.stdout_lines[0].split('/')[0] | regex_replace('^blender-', '') | regex_replace('-linux-x64$', '') }}"
   when: not blender_installed.stat.exists
 
 - name: Set Blender version variable (from installation)
-  set_fact:
-    blender_version: "{{ detected_version.stdout }}"
-    blender_install_path: "{{ blender_install_base }}/{{ detected_version.stdout }}"
-    blender_config_path: ".config/blender/{{ detected_version.stdout }}"
+  ansible.builtin.set_fact:
+    blender_version: "{{ detected_version }}"
+    blender_install_path: "{{ blender_install_base }}/{{ detected_version }}"
+    blender_config_path: ".config/blender/{{ detected_version }}"
   when: not blender_installed.stat.exists
 
 - name: Detect existing Blender version (if already installed)
-  shell: "/usr/local/bin/blender --version | head -1 | grep -oP 'Blender \\K[0-9]+\\.[0-9]+\\.[0-9]+'"
-  register: existing_version
+  ansible.builtin.command: /usr/local/bin/blender --version
+  register: existing_version_output
   changed_when: false
   when: blender_installed.stat.exists
 
+- name: Parse existing Blender version
+  ansible.builtin.set_fact:
+    existing_version: "{{ existing_version_output.stdout_lines[0] | regex_search('Blender ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first }}"
+  when: blender_installed.stat.exists
+
 - name: Get actual Blender installation path from symlink
-  stat:
+  ansible.builtin.stat:
     path: /usr/local/bin/blender
   register: blender_symlink
   when: blender_installed.stat.exists
 
 - name: Set Blender version variable (from existing installation)
-  set_fact:
-    blender_version: "{{ existing_version.stdout }}"
+  ansible.builtin.set_fact:
+    blender_version: "{{ existing_version }}"
     blender_install_path: "{{ blender_symlink.stat.lnk_source | dirname }}"
-    blender_config_path: ".config/blender/{{ existing_version.stdout }}"
+    blender_config_path: ".config/blender/{{ existing_version }}"
   when: blender_installed.stat.exists
 
 - name: Create Blender installation directory
-  file:
+  ansible.builtin.file:
     path: "{{ blender_install_path }}"
     state: directory
     mode: '0755'
@@ -75,7 +85,7 @@
   when: not blender_installed.stat.exists
 
 - name: Install Blender dependencies
-  dnf:
+  ansible.builtin.dnf:
     name:
       - libXrender
       - libXi
@@ -95,7 +105,7 @@
   when: not blender_installed.stat.exists
 
 - name: Extract Blender tarball
-  unarchive:
+  ansible.builtin.unarchive:
     src: "{{ blender_tarball_dest }}"
     dest: "{{ blender_install_path }}"
     remote_src: yes
@@ -105,7 +115,7 @@
   when: not blender_installed.stat.exists
 
 - name: Create Blender symlink
-  file:
+  ansible.builtin.file:
     src: "{{ blender_install_path }}/blender"
     dest: "/usr/local/bin/blender"
     state: link
@@ -113,102 +123,126 @@
   when: not blender_installed.stat.exists
 
 - name: Verify Blender installation
-  command: "{{ blender_install_path }}/blender --version"
+  ansible.builtin.command: "{{ blender_install_path }}/blender --version"
   register: blender_version_check
   changed_when: false
   when: not blender_installed.stat.exists
 
+- name: Find old Blender desktop entries
+  ansible.builtin.find:
+    paths: /usr/share/applications
+    patterns: 'blender-*.desktop'
+  register: old_desktop_entries
+
 - name: Remove old Blender desktop entries
-  ansible.builtin.shell: |
-    find /usr/share/applications -name 'blender-*.desktop' -type f -delete
-  ignore_errors: yes
-  changed_when: false
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_desktop_entries.files }}"
+  when: old_desktop_entries.files | length > 0
 
 - name: Create Blender desktop entry
-  copy:
+  ansible.builtin.template:
+    src: blender.desktop.j2
     dest: "/usr/share/applications/blender-{{ blender_version }}.desktop"
-    content: |
-      [Desktop Entry]
-      Name=Blender {{ blender_version }}
-      GenericName=3D modeler
-      Comment=3D modeling, animation, rendering and post-production
-      Exec={{ blender_install_path }}/blender %f
-      Icon={{ blender_install_path }}/blender.svg
-      Terminal=false
-      Type=Application
-      Categories=Graphics;3DGraphics;
-      MimeType=application/x-blender;
-      StartupNotify=false
-      StartupWMClass=Blender
     mode: '0644'
     owner: root
     group: root
 
 - name: Update desktop database
-  command: update-desktop-database /usr/share/applications
+  ansible.builtin.command: update-desktop-database /usr/share/applications
   changed_when: false
 
-- name: Find all existing AD users (UID > 400000000)
-  shell: |
-    getent passwd | awk -F: '$3 > 400000000 {print $1":"$6}'
+- name: Find all existing AD user home directories
+  ansible.builtin.find:
+    paths: "{{ ad_home_base }}"
+    file_type: directory
+    recurse: no
   register: ad_users
-  changed_when: false
+  failed_when: false
+
+- name: Get ownership info for AD user home directories
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop: "{{ ad_users.files }}"
+  register: ad_user_stats
+  when: ad_users.files is defined and ad_users.files | length > 0
+  failed_when: false
 
 - name: Create Blender config directory for existing AD users
-  file:
-    path: "{{ item.split(':')[1] }}/{{ blender_config_path }}/scripts/startup"
+  ansible.builtin.file:
+    path: "{{ item.stat.path }}/{{ blender_config_path }}/scripts/startup"
     state: directory
     mode: '0755'
-    owner: "{{ item.split(':')[0] }}"
-    group: "domain users"
-  loop: "{{ ad_users.stdout_lines }}"
-  when: ad_users.stdout_lines | length > 0
+  become_user: "{{ item.stat.pw_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
+  failed_when: false
+
+- name: Create Blender config subdirectory for existing AD users
+  ansible.builtin.file:
+    path: "{{ item.stat.path }}/{{ blender_config_path }}/config"
+    state: directory
+    mode: '0755'
+  become_user: "{{ item.stat.pw_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
+  failed_when: false
 
 - name: Create userpref.blend for existing AD users
-  copy:
-    dest: "{{ item.split(':')[1] }}/{{ blender_config_path }}/config/userpref.blend"
+  ansible.builtin.copy:
+    dest: "{{ item.stat.path }}/{{ blender_config_path }}/config/userpref.blend"
     content: ""
     mode: '0644'
-    owner: "{{ item.split(':')[0] }}"
-    group: "domain users"
     force: no
-  loop: "{{ ad_users.stdout_lines }}"
-  when: ad_users.stdout_lines | length > 0
+  become_user: "{{ item.stat.pw_name }}"
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
+  failed_when: false
 
 - name: Create Blender config structure in /etc/skel
-  file:
+  ansible.builtin.file:
     path: "/etc/skel/{{ blender_config_path }}/scripts/startup"
     state: directory
     mode: '0755'
 
 - name: Create Blender config directory in /etc/skel
-  file:
+  ansible.builtin.file:
     path: "/etc/skel/{{ blender_config_path }}/config"
     state: directory
     mode: '0755'
 
 - name: Create placeholder userpref.blend in /etc/skel
-  copy:
+  ansible.builtin.copy:
     dest: "/etc/skel/{{ blender_config_path }}/config/userpref.blend"
     content: ""
     mode: '0644'
     force: no
 
 - name: Verify Deadline repository exists
-  stat:
+  ansible.builtin.stat:
     path: "{{ deadline_repo }}"
   register: deadline_check
   failed_when: false
 
 - name: Check if Deadline repository is writable
-  command: test -w "{{ deadline_repo }}/plugins/Blender"
+  ansible.builtin.command: test -w "{{ deadline_repo }}/plugins/Blender"
   register: deadline_writable
   failed_when: false
   changed_when: false
   when: deadline_check.stat.exists
 
 - name: Configure Deadline Blender plugin - Set Blender executable path
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "{{ deadline_repo }}/plugins/Blender/Blender.param"
     regexp: '^RenderExecutable='
     line: "RenderExecutable={{ blender_install_path }}/blender"
@@ -221,16 +255,13 @@
   register: deadline_config
 
 - name: Create Deadline environment configuration for Blender
-  copy:
+  ansible.builtin.template:
+    src: blender_deadline.sh.j2
     dest: "/etc/profile.d/blender_deadline.sh"
-    content: |
-      #!/bin/bash
-      export BLENDER_USER_SCRIPTS="{{ blender_install_path }}/scripts"
-      export BLENDER_SYSTEM_SCRIPTS="{{ blender_install_path }}/scripts"
     mode: '0755'
 
 - name: Set Blender executable permissions
-  file:
+  ansible.builtin.file:
     path: "{{ blender_install_path }}/blender"
     mode: '0755'
   when:
@@ -238,13 +269,13 @@
   failed_when: false
 
 - name: Remove Blender tarball
-  file:
+  ansible.builtin.file:
     path: "{{ blender_tarball_dest }}"
     state: absent
   when: not blender_installed.stat.exists
 
 - name: Final verification message
-  debug:
+  ansible.builtin.debug:
     msg:
       - "Blender {{ blender_version }} installed successfully at {{ blender_install_path }}"
       - "Symlink created at /usr/local/bin/blender"

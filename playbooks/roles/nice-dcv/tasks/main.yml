@@ -39,35 +39,25 @@
       {% endif %}
 
 # Install RPMs from target directory (whether copied from repo or manually placed)
-- name: Install any NICE DCV RPMs found under {{ nice_dcv_packages_dir }}
-  ansible.builtin.shell: |
-    set -e
-    rpm_count=0
-    for rpm in {{ nice_dcv_packages_dir }}/*.rpm; do
-      [ -f "$rpm" ] || continue
-      rpm_count=$((rpm_count + 1))
-      echo "Installing: $(basename $rpm)"
-      dnf -y install "$rpm" || yum -y install "$rpm" || true
-    done
-    if [ $rpm_count -eq 0 ]; then
-      echo "No RPM files found"
-      exit 1
-    fi
-    echo "Installed $rpm_count RPM(s)"
-  register: dcv_install_result
+- name: Find DCV RPM files on target
+  ansible.builtin.find:
+    paths: "{{ nice_dcv_packages_dir }}"
+    patterns: "*.rpm"
+  register: dcv_rpms_on_target
   failed_when: false
-  changed_when: "'Installed' in dcv_install_result.stdout"
+
+- name: Install NICE DCV RPMs
+  ansible.builtin.dnf:
+    name: "{{ item.path }}"
+    state: present
+    disable_gpg_check: yes
+  loop: "{{ dcv_rpms_on_target.files }}"
+  when: dcv_rpms_on_target.files | length > 0
+  register: dcv_install_result
 
 - name: Display DCV installation result
   ansible.builtin.debug:
-    msg: |
-      {% if dcv_install_result.rc == 0 %}
-      ✅ DCV RPMs installed successfully
-      {{ dcv_install_result.stdout }}
-      {% else %}
-      ⚠️  DCV installation skipped - no RPM files found
-      To install DCV, place RPM files in Files/nice-dcv/ and re-run this playbook
-      {% endif %}
+    msg: "{{ '✅ DCV RPMs installed successfully (' + (dcv_rpms_on_target.files | length | string) + ' packages)' if dcv_rpms_on_target.files | length > 0 else '⚠️ DCV installation skipped - no RPM files found. To install DCV, place RPM files in Files/nice-dcv/ and re-run this playbook' }}"
 
 - name: Clean up temporary DCV packages directory
   ansible.builtin.file:
@@ -77,7 +67,7 @@
 
 # ====== SSSD CONFIGURATION ======
 - name: Replace sssd.conf with repository version if provided
-  copy:
+  ansible.builtin.copy:
     src: "../../Authentication_SSSD/sssd.conf"
     dest: /etc/sssd/sssd.conf
     mode: '0600'
@@ -85,17 +75,15 @@
 
 # ====== DCV SERVICE CONFIGURATION ======
 - name: Create systemd override directory for dcvserver
-  file:
+  ansible.builtin.file:
     path: /etc/systemd/system/dcvserver.service.d
     state: directory
     mode: '0755'
 
 - name: Set RLM_LICENSE environment variable for DCV server
-  copy:
+  ansible.builtin.template:
+    src: dcv-license.conf.j2
     dest: /etc/systemd/system/dcvserver.service.d/license.conf
-    content: |
-      [Service]
-      Environment="RLM_LICENSE={{ nice_dcv_rlm_license }}"
     mode: '0644'
   notify: daemon reload
 
@@ -110,7 +98,7 @@
     state: started
 
 - name: Ensure unit file contains network-online.target dependency
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /usr/lib/systemd/system/dcvserver.service
     insertafter: '^\[Unit\]'
     line: 'After=network-online.target'
@@ -118,13 +106,13 @@
 
 # ====== DCV CONFIGURATION FILES ======
 - name: Ensure /etc/dcv exists
-  file:
+  ansible.builtin.file:
     path: /etc/dcv
     state: directory
     mode: '0755'
 
 - name: Deploy DCV configuration file from template
-  template:
+  ansible.builtin.template:
     src: dcv.conf.j2
     dest: /etc/dcv/dcv.conf
     owner: root
@@ -132,7 +120,7 @@
     mode: '0644'
 
 - name: Deploy DCV default permissions from template
-  template:
+  ansible.builtin.template:
     src: default.perm.j2
     dest: /etc/dcv/default.perm
     owner: root
@@ -140,7 +128,7 @@
     mode: '0644'
 
 - name: Deploy PAM configuration for DCV (dcv)
-  template:
+  ansible.builtin.template:
     src: dcv.j2
     dest: /etc/pam.d/dcv
     owner: root
@@ -148,7 +136,7 @@
     mode: '0644'
 
 - name: Deploy PAM custom configuration for DCV (dcv-custom)
-  template:
+  ansible.builtin.template:
     src: dcv-custom.j2
     dest: /etc/pam.d/dcv-custom
     owner: root
@@ -157,7 +145,7 @@
 
 # ====== FIREWALL CONFIGURATION ======
 - name: Ensure firewalld is installed (for DCV)
-  dnf:
+  ansible.builtin.dnf:
     name: firewalld
     state: present
 

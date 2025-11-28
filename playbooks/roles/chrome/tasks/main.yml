@@ -10,42 +10,25 @@
     msg: "Flatpak installation: {{ 'already present' if not flatpak_install.changed else 'newly installed' }}"
 
 - name: Add Flathub repository
-  ansible.builtin.command:
-    cmd: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+  ansible.builtin.flatpak_remote:
+    name: flathub
+    state: present
+    flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
   register: flathub_add
-  changed_when: "'already exists' not in flathub_add.stderr"
-  failed_when: false
 
 - name: Display Flathub repository status
   ansible.builtin.debug:
-    msg: |
-      Flathub repository: {{ 'already configured' if 'already exists' in flathub_add.stderr else 'newly added' }}
-      {% if flathub_add.rc != 0 and 'already exists' not in flathub_add.stderr %}
-      ⚠️  Warning: Flathub add returned error code {{ flathub_add.rc }}
-      Error: {{ flathub_add.stderr }}
-      {% endif %}
+    msg: "Flathub repository: {{ 'newly added' if flathub_add.changed else 'already configured' }}"
 
 - name: Install Google Chrome from Flatpak
-  ansible.builtin.command:
-    cmd: flatpak install -y flathub com.google.Chrome
+  ansible.builtin.flatpak:
+    name: com.google.Chrome
+    state: present
   register: chrome_install
-  changed_when: "'Already installed' not in chrome_install.stdout"
-  failed_when: false
-  environment:
-    FLATPAK_USER_DIR: /var/lib/flatpak
 
 - name: Display Chrome installation output
   ansible.builtin.debug:
-    msg: |
-      Chrome installation status:
-      Return code: {{ chrome_install.rc }}
-      {% if chrome_install.rc == 0 %}
-      ✅ Installation successful
-      {% else %}
-      ❌ Installation failed
-      Error: {{ chrome_install.stderr | default('No error message') }}
-      Output: {{ chrome_install.stdout | default('No output') }}
-      {% endif %}
+    msg: "Chrome installation: {{ 'newly installed' if chrome_install.changed else 'already present' }}"
 
 - name: Verify Chrome installation
   ansible.builtin.command:

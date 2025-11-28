@@ -1,0 +1,26 @@
+#!/bin/bash
+echo "=== NOX Wallpaper Configuration Verification ==="
+echo
+echo "1. Files:"
+echo "   Wallpaper: $(ls -la {{ wallpaper_path }} 2>/dev/null || echo 'NOT FOUND')"
+echo "   Logo: $(ls -la {{ logo_path }} 2>/dev/null || echo 'NOT FOUND (optional)')"
+echo
+echo "2. Configuration files:"
+echo "   User dconf: $(ls -la /etc/dconf/db/local.d/01-nox-wallpaper 2>/dev/null || echo 'NOT FOUND')"
+echo "   GDM dconf: $(ls -la /etc/dconf/db/gdm.d/01-nox-branding 2>/dev/null || echo 'NOT FOUND')"
+echo "   Autostart: $(ls -la /etc/xdg/autostart/nox-wallpaper.desktop 2>/dev/null || echo 'NOT FOUND')"
+echo
+echo "3. Active X11 sessions:"
+who | grep -v grep
+echo
+echo "4. Current user wallpaper (if logged in):"
+if [ -n "$DISPLAY" ]; then
+  gsettings get org.gnome.desktop.background picture-uri 2>/dev/null || echo "Not available"
+else
+  echo "No DISPLAY set (not in graphical session)"
+fi
+echo
+echo "5. Active GNOME sessions:"
+ps aux | grep gnome-session | grep -v grep | awk '{print "User: " $1 " | PID: " $2}'
+echo
+echo "=== To see changes: Log out and back in, or reboot ==="

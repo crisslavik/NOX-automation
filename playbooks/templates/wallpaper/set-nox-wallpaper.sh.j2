@@ -1,0 +1,45 @@
+#!/bin/bash
+# NOX Wallpaper setter for AD users (X11 + Nice-DCV compatible)
+
+# Wait for session to be ready
+sleep 10
+
+# Detect DISPLAY if not set
+if [ -z "$DISPLAY" ]; then
+    # Try to find user's actual DISPLAY
+    DISPLAY=$(who | grep "($USER)" | sed 's/.*(\(.*\)).*/\1/' | head -n1)
+    if [ -z "$DISPLAY" ]; then
+        DISPLAY=:0
+    fi
+    export DISPLAY
+fi
+
+# Set DBUS
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+fi
+
+# Set XAUTHORITY for X11
+if [ -z "$XAUTHORITY" ]; then
+    export XAUTHORITY="$HOME/.Xauthority"
+fi
+
+# Wait for gsettings to be available
+timeout=30
+while [ $timeout -gt 0 ]; do
+    if gsettings list-schemas | grep -q "org.gnome.desktop.background"; then
+        break
+    fi
+    sleep 1
+    ((timeout--))
+done
+
+# Set wallpaper
+if gsettings list-schemas | grep -q "org.gnome.desktop.background"; then
+    gsettings set org.gnome.desktop.background picture-uri "file://{{ wallpaper_path }}"
+    gsettings set org.gnome.desktop.background picture-uri-dark "file://{{ wallpaper_path }}"
+    gsettings set org.gnome.desktop.background picture-options 'zoom'
+    gsettings set org.gnome.desktop.screensaver picture-uri "file://{{ wallpaper_path }}"
+
+    logger "NOX wallpaper set for user $(whoami) on $(hostname) DISPLAY=$DISPLAY"
+fi

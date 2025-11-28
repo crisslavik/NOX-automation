@@ -1,0 +1,5 @@
+#!/bin/bash
+# Set NOX wallpaper for GNOME sessions
+if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] && [ -n "$DISPLAY" ]; then
+    (/usr/local/bin/set-nox-wallpaper.sh &) 2>/dev/null
+fi

@@ -12,11 +12,18 @@
     state: present
   when: brave_dnf is defined and (brave_dnf is failed or brave_dnf is skipped)
 
+- name: Add Flathub repository for Brave fallback
+  ansible.builtin.flatpak_remote:
+    name: flathub
+    state: present
+    flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
+  when: brave_dnf is defined and (brave_dnf is failed or brave_dnf is skipped)
+
 - name: Install Brave via Flatpak if dnf install not successful
-  ansible.builtin.command:
-    cmd: flatpak install -y flathub {{ brave_flatpak }}
-  register: brave_flatpak
-  failed_when: brave_flatpak.rc != 0
+  ansible.builtin.flatpak:
+    name: "{{ brave_flatpak }}"
+    state: present
+  register: brave_flatpak_install
   when: brave_dnf is defined and (brave_dnf is failed or brave_dnf is skipped)
 
 - name: Verify Brave installation
