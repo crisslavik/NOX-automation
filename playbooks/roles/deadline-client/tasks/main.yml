@@ -115,7 +115,15 @@
       export DEADLINE_PATH={{ deadline_install_dir }}
       export PATH=$PATH:{{ deadline_install_dir }}/bin
 
-# Step 5b: Create systemd service for Deadline Launcher
+# Step 5b: Ensure render user home directory is correct
+- name: Set render user home directory to /var/lib/render
+  ansible.builtin.user:
+    name: "{{ render_user }}"
+    home: /var/lib/{{ render_user }}
+    create_home: yes
+  failed_when: false
+
+# Step 5c: Create systemd service for Deadline Launcher
 - name: Create Deadline Launcher systemd service
   ansible.builtin.copy:
     dest: /etc/systemd/system/deadline-launcher.service
@@ -131,6 +139,7 @@
       User={{ render_user }}
       Group={{ render_user }}
       Environment="HOME=/var/lib/{{ render_user }}"
+      WorkingDirectory=/var/lib/{{ render_user }}
       ExecStart={{ deadline_install_dir }}/bin/deadlinelauncher -nogui
       Restart=always
       RestartSec=10
