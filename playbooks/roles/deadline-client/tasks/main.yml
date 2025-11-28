@@ -227,22 +227,33 @@
       files: "{{ ad_user_homes_raw.files | selectattr('uid', 'gt', 400000000) | list }}"
   when: ad_user_homes_raw.files is defined
 
+- name: Get ownership info for AD user home directories
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop: "{{ ad_user_homes.files }}"
+  register: ad_user_stats
+  when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+  failed_when: false
+
 - name: Create Thinkbox/Deadline10 directory for existing AD users
   ansible.builtin.file:
-    path: "{{ item.path }}/Thinkbox/Deadline10"
+    path: "{{ item.stat.path }}/Thinkbox/Deadline10"
     state: directory
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.gid }}"
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
     mode: '0755'
-  loop: "{{ ad_user_homes.files }}"
-  when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+  loop: "{{ ad_user_stats.results }}"
+  when:
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
   failed_when: false
 
 - name: Configure deadline.ini for existing AD users (with SSL)
   ansible.builtin.copy:
-    dest: "{{ item.path }}/Thinkbox/Deadline10/deadline.ini"
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.gid }}"
+    dest: "{{ item.stat.path }}/Thinkbox/Deadline10/deadline.ini"
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
     mode: '0644'
     content: |
       [Deadline]
@@ -252,17 +263,19 @@
       ProxyValidateCertificate=false
       ProxySSLCertificate={{ client_cert_path }}
       LicenseMode=Standard
-  loop: "{{ ad_user_homes.files }}"
+  loop: "{{ ad_user_stats.results }}"
   when:
-    - ad_user_homes.files is defined and ad_user_homes.files | length > 0
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
     - deadline_use_ssl | default(true) | bool
   failed_when: false
 
 - name: Configure deadline.ini for existing AD users (without SSL)
   ansible.builtin.copy:
-    dest: "{{ item.path }}/Thinkbox/Deadline10/deadline.ini"
-    owner: "{{ item.path | basename }}"
-    group: "{{ item.gid }}"
+    dest: "{{ item.stat.path }}/Thinkbox/Deadline10/deadline.ini"
+    owner: "{{ item.stat.pw_name }}"
+    group: "{{ item.stat.gr_name }}"
     mode: '0644'
     content: |
       [Deadline]
@@ -270,9 +283,11 @@
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=false
       LicenseMode=Standard
-  loop: "{{ ad_user_homes.files }}"
+  loop: "{{ ad_user_stats.results }}"
   when:
-    - ad_user_homes.files is defined and ad_user_homes.files | length > 0
+    - ad_user_stats.results is defined
+    - item.stat is defined
+    - item.stat.exists
     - not (deadline_use_ssl | default(true) | bool)
   failed_when: false
 
