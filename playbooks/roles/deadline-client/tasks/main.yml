@@ -138,6 +138,7 @@
       User={{ render_user }}
       Group={{ render_user }}
       Environment="HOME=/var/lib/{{ render_user }}"
+      Environment="foundry_LICENSE={{ foundry_license }}"
       WorkingDirectory=/var/lib/{{ render_user }}
       ExecStart={{ deadline_install_dir }}/bin/deadlinelauncher -nogui
       Restart=always
