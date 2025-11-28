@@ -80,14 +80,12 @@
     msg: "{{ '✅ Deadline client installed successfully at ' + deadline_install_dir if not deadline_installed.stat.exists else '✅ Deadline client already installed - configuration updated' }}"
 
 # Step 4: Configure Deadline Repository Connection
-- name: Configure Deadline connection to RCS server (SSL with client cert)
+- name: Configure Deadline connection to RCS server (SSL without client cert)
   ansible.builtin.shell: |
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ConnectionType Remote
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyRoot {{ rcs_server }}:{{ rcs_port }}
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL true
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyValidateCertificate false
-    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate "{{ client_cert_path }}"
-    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLPassword "{{ client_cert_password }}"
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting LicenseMode Standard
   environment:
     HOME: /root
@@ -183,10 +181,6 @@
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL={{ 'true' if deadline_use_ssl | default(true) | bool else 'false' }}
       ProxyValidateCertificate=false
-      {% if deadline_use_ssl | default(true) | bool %}
-      ProxySSLCertificate={{ client_cert_path }}
-      ProxySSLPassword={{ client_cert_password }}
-      {% endif %}
       LicenseMode=Standard
 
 - name: Enable and start Deadline Launcher service
@@ -272,8 +266,6 @@
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=true
       ProxyValidateCertificate=false
-      ProxySSLCertificate={{ client_cert_path }}
-      ProxySSLPassword={{ client_cert_password }}
       LicenseMode=Standard
   loop: "{{ ad_user_stats.results }}"
   when:
@@ -320,8 +312,6 @@
       ProxyRoot={{ rcs_server }}:{{ rcs_port }}
       ProxyUseSSL=true
       ProxyValidateCertificate=false
-      ProxySSLCertificate={{ client_cert_path }}
-      ProxySSLPassword={{ client_cert_password }}
       LicenseMode=Standard
   when: deadline_use_ssl | default(true) | bool
 
