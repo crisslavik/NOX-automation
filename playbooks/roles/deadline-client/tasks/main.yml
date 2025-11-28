@@ -123,6 +123,11 @@
   failed_when: false
 
 # Step 5c: Create systemd service for Deadline Launcher
+- name: Kill any existing Deadline Launcher processes (cleanup old manual processes)
+  ansible.builtin.shell: pkill -9 deadlinelauncher || true
+  changed_when: false
+  failed_when: false
+
 - name: Create Deadline Launcher systemd service
   ansible.builtin.template:
     src: deadline-launcher.service.j2
