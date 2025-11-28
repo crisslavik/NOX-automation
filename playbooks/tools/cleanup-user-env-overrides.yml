@@ -1,0 +1,206 @@
+---
+- name: Clean Up Personal Environment Variable Overrides
+  hosts: all
+  become: yes
+  vars:
+    ad_home_base: /home/ad.noxvfx.com
+    backup_dir: /root/dotfile-backups
+    # Patterns to remove from user dotfiles
+    remove_patterns:
+      - 'export NUKE_PATH='
+      - 'export foundry_LICENSE='
+      - 'export DEADLINE_PATH='
+      - 'export PATH=.*Nuke.*'
+      - 'export PATH=.*Deadline.*'
+      - 'export PATH=.*Blender.*'
+      - 'export BLENDER_USER_SCRIPTS='
+      - 'export BLENDER_SYSTEM_SCRIPTS='
+    # Files to clean
+    dotfiles_to_clean:
+      - .bashrc
+      - .bash_profile
+      - .profile
+      - .zshrc
+
+  tasks:
+    - name: Display cleanup plan
+      ansible.builtin.debug:
+        msg: |
+          🧹 Cleaning Personal Environment Overrides on {{ inventory_hostname }}
+
+          This will remove VFX-related environment variables from user dotfiles.
+          All settings should come from /etc/profile.d/ (centralized management).
+
+          Patterns to remove:
+          {{ remove_patterns | join('\n          ') }}
+
+          Files to clean:
+          {{ dotfiles_to_clean | join(', ') }}
+
+          Backups will be saved to: {{ backup_dir }}/{{ ansible_date_time.date }}
+
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ backup_dir }}/{{ ansible_date_time.date }}"
+        state: directory
+        mode: '0700'
+
+    - name: Find all AD user home directories
+      ansible.builtin.find:
+        paths: "{{ ad_home_base }}"
+        file_type: directory
+        recurse: no
+      register: ad_user_homes
+      failed_when: false
+
+    - name: Get ownership info for AD user home directories
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop: "{{ ad_user_homes.files }}"
+      register: ad_user_stats
+      when: ad_user_homes.files is defined and ad_user_homes.files | length > 0
+      failed_when: false
+
+    - name: Scan and clean user dotfiles
+      ansible.builtin.shell: |
+        set -e
+
+        username="{{ item.stat.pw_name }}"
+        homedir="{{ item.stat.path }}"
+        backup_base="{{ backup_dir }}/{{ ansible_date_time.date }}"
+
+        echo "=== Processing user: $username ==="
+
+        # Create user-specific backup directory
+        mkdir -p "$backup_base/$username"
+
+        modified_files=0
+
+        {% for dotfile in dotfiles_to_clean %}
+        dotfile="{{ dotfile }}"
+        filepath="$homedir/$dotfile"
+
+        if [ -f "$filepath" ]; then
+          # Check if file contains any of our patterns
+          found=0
+          {% for pattern in remove_patterns %}
+          if grep -q '{{ pattern }}' "$filepath" 2>/dev/null; then
+            found=1
+            break
+          fi
+          {% endfor %}
+
+          if [ $found -eq 1 ]; then
+            echo "  Found overrides in: $dotfile"
+
+            # Create backup
+            cp "$filepath" "$backup_base/$username/$dotfile.backup"
+            echo "  ✓ Backup created: $backup_base/$username/$dotfile.backup"
+
+            # Create cleaned version
+            cp "$filepath" "$filepath.tmp"
+
+            # Remove each pattern
+            {% for pattern in remove_patterns %}
+            sed -i '/{{ pattern }}/d' "$filepath.tmp"
+            {% endfor %}
+
+            # Replace original file
+            mv "$filepath.tmp" "$filepath"
+
+            # Preserve ownership
+            chown {{ item.stat.uid }}:{{ item.stat.gid }} "$filepath"
+            chmod 644 "$filepath"
+
+            echo "  ✓ Cleaned: $dotfile"
+            modified_files=$((modified_files + 1))
+          fi
+        fi
+        {% endfor %}
+
+        if [ $modified_files -eq 0 ]; then
+          echo "  ✓ No overrides found - dotfiles are clean"
+        else
+          echo "  ✅ Modified $modified_files file(s)"
+        fi
+
+        echo ""
+      args:
+        executable: /bin/bash
+      loop: "{{ ad_user_stats.results }}"
+      register: cleanup_results
+      when:
+        - ad_user_stats.results is defined
+        - item.stat is defined
+        - item.stat.exists
+      failed_when: false
+      changed_when: "'✅ Modified' in cleanup_results.stdout"
+
+    - name: Display cleanup results
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ cleanup_results.results }}"
+      when:
+        - cleanup_results.results is defined
+        - item.stdout_lines is defined
+      loop_control:
+        label: "{{ item.item.stat.pw_name if item.item is defined and item.item.stat is defined else 'unknown' }}"
+
+    - name: Create cleanup report
+      ansible.builtin.copy:
+        content: |
+          ========================================
+          Environment Override Cleanup Report
+          Host: {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+
+          Backup Location: {{ backup_dir }}/{{ ansible_date_time.date }}
+
+          Removed Patterns:
+          {% for pattern in remove_patterns %}
+            - {{ pattern }}
+          {% endfor %}
+
+          Cleaned Files:
+          {% for dotfile in dotfiles_to_clean %}
+            - {{ dotfile }}
+          {% endfor %}
+
+          ========================================
+          User Details:
+          ========================================
+          {% for result in cleanup_results.results %}
+          {% if result.stdout_lines is defined %}
+          {{ result.stdout }}
+          {% endif %}
+          {% endfor %}
+
+          ========================================
+          To restore a backup:
+          ========================================
+          cp {{ backup_dir }}/{{ ansible_date_time.date }}/USERNAME/DOTFILE.backup /home/ad.noxvfx.com/USERNAME/DOTFILE
+
+        dest: "{{ backup_dir }}/{{ ansible_date_time.date }}/cleanup-report.txt"
+        mode: '0600'
+
+    - name: Display summary
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+
+          ✅ Environment Override Cleanup Complete for {{ inventory_hostname }}
+
+          Users processed: {{ ad_user_stats.results | length if ad_user_stats.results is defined else 0 }}
+
+          Backups saved to: {{ backup_dir }}/{{ ansible_date_time.date }}
+          Report: {{ backup_dir }}/{{ ansible_date_time.date }}/cleanup-report.txt
+
+          All VFX environment variables have been removed from user dotfiles.
+          Configuration is now centralized in /etc/profile.d/
+
+          Users must logout and login again for changes to take effect.
+
+          To restore a backup (if needed):
+            ssh {{ inventory_hostname }}
+            cp {{ backup_dir }}/{{ ansible_date_time.date }}/USERNAME/FILE.backup /home/ad.noxvfx.com/USERNAME/FILE
