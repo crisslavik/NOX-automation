@@ -3,13 +3,6 @@
 # Installs core DCC and utility software on NOX workstations.
 # Use: ansible-playbook -i hosts.ini playbooks/site-vfx.yml --limit <host_or_group>
 
-- name: Configure NOX Pipeline PATH
-  ansible.builtin.import_playbook: nox-pipeline-path.yml
-  tags:
-    - vfx
-    - pipeline
-    - always
-
 - name: Install Blender with Deadline integration
   ansible.builtin.import_playbook: softwares/blender.yml
   tags:
