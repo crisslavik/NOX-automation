@@ -87,6 +87,7 @@
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyUseSSL true
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxyValidateCertificate false
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLCertificate "{{ client_cert_path }}"
+    {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting ProxySSLPassword "{{ client_cert_password }}"
     {{ deadline_install_dir }}/bin/deadlinecommand SetIniFileSetting LicenseMode Standard
   environment:
     HOME: /root
@@ -184,6 +185,7 @@
       ProxyValidateCertificate=false
       {% if deadline_use_ssl | default(true) | bool %}
       ProxySSLCertificate={{ client_cert_path }}
+      ProxySSLPassword={{ client_cert_password }}
       {% endif %}
       LicenseMode=Standard
 
@@ -271,6 +273,7 @@
       ProxyUseSSL=true
       ProxyValidateCertificate=false
       ProxySSLCertificate={{ client_cert_path }}
+      ProxySSLPassword={{ client_cert_password }}
       LicenseMode=Standard
   loop: "{{ ad_user_stats.results }}"
   when:
@@ -318,6 +321,7 @@
       ProxyUseSSL=true
       ProxyValidateCertificate=false
       ProxySSLCertificate={{ client_cert_path }}
+      ProxySSLPassword={{ client_cert_password }}
       LicenseMode=Standard
   when: deadline_use_ssl | default(true) | bool
 
