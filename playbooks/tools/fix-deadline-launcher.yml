@@ -1,0 +1,104 @@
+---
+# Fix Deadline Launcher Configuration and Clean Up Old Processes
+# Usage: ansible-playbook playbooks/tools/fix-deadline-launcher.yml
+
+- name: Fix Deadline Launcher Issues
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Check if Deadline is installed
+      ansible.builtin.stat:
+        path: /opt/Thinkbox/Deadline10/bin/deadlinecommand
+      register: deadline_binary
+
+    - name: Stop old deadline10launcher service if it exists
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        state: stopped
+      failed_when: false
+      when: deadline_binary.stat.exists
+
+    - name: Disable old deadline10launcher service
+      ansible.builtin.systemd:
+        name: deadline10launcher
+        enabled: no
+      failed_when: false
+      when: deadline_binary.stat.exists
+
+    - name: Stop deadline-launcher service temporarily
+      ansible.builtin.systemd:
+        name: deadline-launcher
+        state: stopped
+      when: deadline_binary.stat.exists
+
+    - name: Kill all deadlinelauncher processes
+      ansible.builtin.shell: pkill -9 -f deadlinelauncher || true
+      changed_when: false
+      failed_when: false
+      when: deadline_binary.stat.exists
+
+    - name: Wait for processes to die
+      ansible.builtin.pause:
+        seconds: 3
+      when: deadline_binary.stat.exists
+
+    - name: Remove certificate references from /var/lib/Thinkbox/Deadline10/deadline.ini
+      ansible.builtin.lineinfile:
+        path: /var/lib/Thinkbox/Deadline10/deadline.ini
+        regexp: '^ProxySSLCertificate='
+        state: absent
+      when: deadline_binary.stat.exists
+      failed_when: false
+
+    - name: Remove certificate password from /var/lib/Thinkbox/Deadline10/deadline.ini
+      ansible.builtin.lineinfile:
+        path: /var/lib/Thinkbox/Deadline10/deadline.ini
+        regexp: '^ProxySSLPassword='
+        state: absent
+      when: deadline_binary.stat.exists
+      failed_when: false
+
+    - name: Remove certificate references from AD home directory
+      ansible.builtin.lineinfile:
+        path: /home/ad.noxvfx.com/render/Thinkbox/Deadline10/deadline.ini
+        regexp: '^ProxySSLCertificate='
+        state: absent
+      when: deadline_binary.stat.exists
+      failed_when: false
+
+    - name: Remove certificate password from AD home directory
+      ansible.builtin.lineinfile:
+        path: /home/ad.noxvfx.com/render/Thinkbox/Deadline10/deadline.ini
+        regexp: '^ProxySSLPassword='
+        state: absent
+      when: deadline_binary.stat.exists
+      failed_when: false
+
+    - name: Start deadline-launcher service
+      ansible.builtin.systemd:
+        name: deadline-launcher
+        state: started
+        enabled: yes
+      when: deadline_binary.stat.exists
+
+    - name: Wait for service to stabilize
+      ansible.builtin.pause:
+        seconds: 5
+      when: deadline_binary.stat.exists
+
+    - name: Check service status
+      ansible.builtin.systemd:
+        name: deadline-launcher
+      register: service_status
+      when: deadline_binary.stat.exists
+
+    - name: Display service status
+      ansible.builtin.debug:
+        msg: |
+          {{ inventory_hostname }}:
+          Service Active: {{ service_status.status.ActiveState | default('unknown') }}
+          Service Enabled: {{ 'yes' if service_status.status.UnitFileState == 'enabled' else 'no' }}
+          Main PID: {{ service_status.status.MainPID | default('none') }}
+      when: deadline_binary.stat.exists
