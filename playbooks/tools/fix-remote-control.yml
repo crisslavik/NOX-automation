@@ -28,6 +28,14 @@
       when: deadline_binary.stat.exists
       failed_when: false
 
+    - name: Add ClientSSLAuthentication setting to /var/lib/Thinkbox/Deadline10/deadline.ini
+      ansible.builtin.lineinfile:
+        path: /var/lib/Thinkbox/Deadline10/deadline.ini
+        regexp: '^ClientSSLAuthentication='
+        line: 'ClientSSLAuthentication=Required'
+        insertafter: '^ProxyUseSSL='
+      when: deadline_binary.stat.exists
+
     - name: Restart deadline-launcher service to apply changes
       ansible.builtin.systemd:
         name: deadline-launcher
