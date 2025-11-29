@@ -1,0 +1,54 @@
+---
+# Fix RemoteControl setting in deadline.ini
+# Usage: ansible-playbook playbooks/tools/fix-remote-control.yml -i hosts.ini
+
+- name: Fix Deadline RemoteControl Setting
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Check if Deadline is installed
+      ansible.builtin.stat:
+        path: /opt/Thinkbox/Deadline10/bin/deadlinecommand
+      register: deadline_binary
+
+    - name: Change RemoteControl from Blocked to NotBlocked in /var/lib/Thinkbox/Deadline10/deadline.ini
+      ansible.builtin.lineinfile:
+        path: /var/lib/Thinkbox/Deadline10/deadline.ini
+        regexp: '^RemoteControl='
+        line: 'RemoteControl=NotBlocked'
+      when: deadline_binary.stat.exists
+
+    - name: Change RemoteControl from Blocked to NotBlocked in AD home directory
+      ansible.builtin.lineinfile:
+        path: /home/ad.noxvfx.com/render/Thinkbox/Deadline10/deadline.ini
+        regexp: '^RemoteControl='
+        line: 'RemoteControl=NotBlocked'
+      when: deadline_binary.stat.exists
+      failed_when: false
+
+    - name: Restart deadline-launcher service to apply changes
+      ansible.builtin.systemd:
+        name: deadline-launcher
+        state: restarted
+      when: deadline_binary.stat.exists
+
+    - name: Wait for service to stabilize
+      ansible.builtin.pause:
+        seconds: 5
+      when: deadline_binary.stat.exists
+
+    - name: Check service status
+      ansible.builtin.systemd:
+        name: deadline-launcher
+      register: service_status
+      when: deadline_binary.stat.exists
+
+    - name: Display service status
+      ansible.builtin.debug:
+        msg: |
+          {{ inventory_hostname }}:
+          Service Active: {{ service_status.status.ActiveState | default('unknown') }}
+          Main PID: {{ service_status.status.MainPID | default('none') }}
+      when: deadline_binary.stat.exists
