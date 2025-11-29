@@ -13,11 +13,12 @@ deadline_install_path: "{{ deadline_install_dir }}"
 # Repository connection settings (inherited from group_vars/all.yml)
 rcs_server: "{{ deadline_rcs_server }}"
 rcs_port: "{{ deadline_rcs_port }}"
-client_cert_path: "{{ deadline_cert_path }}"
-client_cert_password: "{{ deadline_cert_password }}"
+# Certificate authentication disabled
+# client_cert_path: "{{ deadline_cert_path | default('') }}"
+# client_cert_password: "{{ deadline_cert_password | default('') }}"
 
 # SSL connection settings
-deadline_use_ssl: true  # RCS server requires HTTPS (hardcoded in ASP.Net Core Kestrel)
+deadline_use_ssl: false  # SSL disabled - no client certificates required
 
 # Daemon settings (inherited from group_vars/all.yml)
 render_user: "{{ deadline_render_user }}"

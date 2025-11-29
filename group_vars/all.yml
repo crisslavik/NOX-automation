@@ -41,8 +41,9 @@ daselement_resources_path: "/mnt/Library/_daselement/resources"
 # Deadline Repository Connection
 deadline_rcs_server: "192.168.11.16"
 deadline_rcs_port: "4433"
-deadline_cert_path: "/mnt/Library/_deadlinerepo/certs/Deadline10RemoteClient.pfx"
-deadline_cert_password: "N0Xdeadline"
+# Certificate authentication disabled - not using SSL client certificates
+# deadline_cert_path: "/mnt/Library/_deadlinerepo/certs/Deadline10RemoteClient.pfx"
+# deadline_cert_password: "N0Xdeadline"
 deadline_render_user: "render"
 
 # ============================================================================
