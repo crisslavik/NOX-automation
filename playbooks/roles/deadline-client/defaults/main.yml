@@ -18,7 +18,7 @@ rcs_port: "{{ deadline_rcs_port }}"
 # client_cert_password: "{{ deadline_cert_password | default('') }}"
 
 # SSL connection settings
-deadline_use_ssl: false  # SSL disabled - no client certificates required
+deadline_use_ssl: true  # RCS requires HTTPS, but no client certificate authentication
 
 # Daemon settings (inherited from group_vars/all.yml)
 render_user: "{{ deadline_render_user }}"
